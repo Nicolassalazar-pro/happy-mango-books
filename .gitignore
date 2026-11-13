@@ -1,0 +1,19 @@
+# Only the website and its maintenance files belong in the public repository.
+*
+!.gitignore
+!.gitattributes
+!README.md
+!package.json
+!package-lock.json
+!.github/
+!.github/workflows/
+!.github/workflows/pages.yml
+!site/
+!site/**
+!tests/
+!tests/site.mjs
+
+.env
+.env.*
+*.pem
+*.key
