@@ -12,6 +12,9 @@
 !site/**
 !tests/
 !tests/site.mjs
+!tests/requirements.json
+!scripts/
+!scripts/preview.py
 
 .env
 .env.*

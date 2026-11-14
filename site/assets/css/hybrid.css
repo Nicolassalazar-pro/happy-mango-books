@@ -1,0 +1,81 @@
+.hybrid { --ink: #28224f; --muted: #58516b; --paper: #fffbed; --canvas: #e6dff6; --teal: #126a6a; --mint: #a9d7c9; --edge: #c5b6d9; --display: "Nerko", sans-serif; color: var(--ink); background-color: var(--canvas); background-image: linear-gradient(90deg, #ffffff60 50%, transparent 50%), linear-gradient(#ffffff60 50%, transparent 50%); background-size: 76px 76px; font-size: 1rem; line-height: 1.65; }
+.hybrid .shell { width: min(100%, 1320px); padding-inline: clamp(20px, 5vw, 68px); margin-inline: auto; }
+.hybrid .site-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 98px; border-bottom: 1px solid var(--edge); }
+.hybrid .brand { display: inline-flex; padding: 8px 0; flex: 0 0 auto; }
+.hybrid .brand img { width: 132px; height: auto; }
+.site-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 26px; font-size: .875rem; font-weight: 700; }
+.site-nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 7px 2px; text-decoration: none; border-bottom: 2px solid transparent; }
+.site-nav a[aria-current="page"] { border-bottom-color: currentColor; color: #08696a; }
+.site-nav a:hover { text-decoration: underline; }
+.hybrid h1, .hybrid h2, .hybrid h3 { font-weight: 400; }
+.hybrid .eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.hybrid .button { display: inline-flex; align-items: center; justify-content: center; gap: 16px; min-height: 48px; padding: 12px 23px; border: 2px solid var(--ink); border-radius: 12px 18px 13px 16px; font-family: "Nunito", Arial, sans-serif; font-size: .9375rem; font-weight: 700; line-height: 1.4; background: var(--ink); color: var(--paper); text-decoration: none; }
+.hybrid .button:hover { background: #126a6a; border-color: #126a6a; }
+.hybrid .button:active { box-shadow: inset 0 2px 3px #0003; }
+.hybrid :focus-visible { outline: 3px solid #ad4f12; outline-offset: 5px; }
+.home-opening { padding-top: 28px; text-align: center; }
+.hero-heading { max-width: 760px; margin: 0 auto 22px; text-align: center; }
+.hero-heading h1 { margin: 10px 0 9px; font-size: clamp(3.5rem, 6.6vw, 6.5rem); line-height: .98; text-transform: uppercase; }
+.hero-heading h1 span { color: #08767c; }
+.hero-heading .book-subtitle { font-size: 1.14rem; line-height: 1.5; }
+.hero-introduction { margin: 24px auto 0; max-width: 51ch; font-size: 1.06rem; color: var(--muted); }
+.hero-credit { margin: 15px auto 0; max-width: 60ch; color: var(--muted); font-size: .75rem; }
+.home-facts { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px; margin-top: 30px; padding-block: 15px 25px; font-size: .83rem; }
+.home-facts p { display: flex; align-items: baseline; gap: 10px; }
+.home-facts strong { font-family: var(--display); font-size: 1.75rem; font-weight: 400; color: #08767c; }
+.hybrid .chapter-wave { fill: var(--teal); color: var(--teal); }
+.guide-context { padding-block: 50px 56px; background: var(--teal); color: var(--paper); }
+.guide-layout { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 34px 70px; }
+.guide-layout h2 { max-width: 16ch; font-size: clamp(2.8rem, 4.5vw, 4.3rem); margin-top: 14px; }
+.guide-layout .guide-body { max-width: 45ch; margin-top: 26px; line-height: 1.8; }
+.guide-notes { display: flex; flex-wrap: wrap; gap: 12px 22px; margin-top: 24px; font-size: .875rem; }
+.guide-notes span { padding-bottom: 6px; border-bottom: 1px solid #fffbed70; }
+.bulk-section { display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 30px 65px; margin-block: 18px 55px; padding: 34px 40px; background: var(--paper); border: 1px solid #d7cdb6; border-radius: 25px 38px 24px 31px; box-shadow: 0 3px 0 #ab9ab915; }
+.bulk-section h2 { font-size: clamp(2.4rem, 3.6vw, 3.5rem); margin-top: 12px; }
+.bulk-section p { color: var(--muted); }
+.bulk-section .button { margin-top: 22px; }
+.hybrid .site-footer { display: flex; justify-content: space-between; align-items: end; gap: 24px; color: var(--muted); font-size: .75rem; border-top: 1px solid var(--edge); padding: 23px 0 28px; }
+.hybrid .site-footer strong { font-size: .8125rem; color: var(--ink); }
+.hybrid .site-footer > div { max-width: 65ch; }
+.hybrid .site-credit { margin-left: auto; text-align: right; }
+.hybrid.subpage { display: flex; flex-direction: column; min-height: 100svh; }
+.hybrid.subpage > .shell { width: 100%; }
+.hybrid.subpage main { flex: 1; }
+.page-heading { margin-top: 46px; }
+.page-heading h1 { font-size: clamp(3.5rem, 6.5vw, 5.9rem); line-height: 1; margin: 14px 0 22px; }
+.page-heading p { max-width: 54ch; }
+.draft-label { display: inline-block; border: 1px dashed #91809e; border-radius: 6px; padding: 4px 10px; font-size: .75rem; color: var(--muted); }
+.photo-frame { min-width: 0; overflow: hidden; background: var(--paper); }
+.photo-frame img { width: 100%; height: auto; object-fit: contain; }
+.photo-placeholder { display: grid; align-content: center; justify-items: center; text-align: center; min-height: 200px; padding: 18px; background: #e8e4ed; border: 1px dashed #9a8ea7; color: #554969; font-size: .85rem; }
+@media (max-width: 760px) {
+  .hybrid { background-size: 50px 50px; }
+  .hybrid .site-header { min-height: 84px; gap: 13px; }
+  .hybrid .brand img { width: 103px; }
+  .site-nav { gap: 12px; font-size: .8125rem; }
+  .home-opening { padding-top: 26px; }
+  .hero-heading h1 { font-size: clamp(3rem, 12.9vw, 4.8rem); }
+  .hero-heading .eyebrow { font-size: .66rem; }
+  .hero-heading .book-subtitle { font-size: 1rem; }
+  .hero-introduction { font-size: 1rem; }
+  .hero-credit { max-width: 31ch; }
+  .home-facts { justify-content: center; margin-top: 20px; font-size: .73rem; }
+  .home-facts strong { font-size: 1.42rem; }
+  .guide-context { padding-block: 34px 38px; }
+  .guide-layout { grid-template-columns: 1fr; gap: 0; }
+  .guide-layout h2 { max-width: none; font-size: 2.8rem; }
+  .guide-layout .guide-body { margin-top: 21px; }
+  .guide-notes { gap: 9px 14px; }
+  .bulk-section { grid-template-columns: 1fr; padding: 27px 24px; gap: 22px; margin-bottom: 38px; }
+  .bulk-section h2 { font-size: 2.6rem; }
+  .hybrid .site-footer { flex-direction: column; align-items: start; gap: 12px; }
+  .page-heading { margin-top: 32px; }
+}
+@media (max-width: 360px) {
+  .hybrid .site-header { flex-wrap: wrap; justify-content: center; gap: 0 20px; padding-bottom: 7px; }
+  .hybrid .brand img { width: 110px; }
+  .site-nav { justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hybrid *, .hybrid *::before, .hybrid *::after { animation: none !important; transition: none !important; }
+}

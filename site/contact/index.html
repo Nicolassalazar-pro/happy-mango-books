@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Ready to Eat brings a colorful read-together story and practical caregiver guidance into one book from Happy Mango Books.">
+  <title>Contact | Happy Mango Books</title>
+  <link rel="stylesheet" href="../assets/css/site.css">
+  <link rel="stylesheet" href="../assets/css/hybrid.css">
+  <meta http-equiv="Content-Security-Policy" content="form-action 'none'; connect-src 'none'">
+  <link rel="stylesheet" href="../assets/css/contact.css">
+</head>
+<body class="hybrid subpage" id="top">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="shell">
+    <header class="site-header">
+      <a class="brand" href="../" aria-label="Happy Mango Books home"><img src="../assets/images/logo.webp" width="520" height="281" alt="Happy Mango Books"></a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="../">The book</a>
+        <a href="../about/" >About</a>
+        <a href="../contact/" aria-current="page">Contact</a>
+      </nav>
+    </header>
+  </div>
+  <main id="main" class="shell">
+    <div class="contact-layout">
+      <section class="contact-intro" data-unit-id="contact-intro" aria-labelledby="contact-heading">
+        <p class="unit-qualification">Questions and group orders</p>
+        <h1 class="unit-heading" id="contact-heading">Let&#39;s start a conversation.</h1>
+        <p class="unit-paragraph">A question about Ready to Eat? Copies to share with a group? Tell us a little about what you have in mind.</p>
+      </section>
+      <section class="contact-card" aria-labelledby="inquiry-heading">
+        <div class="contact-card-heading">
+          <h2 id="inquiry-heading">Your inquiry</h2>
+          <p>Fields marked <span aria-hidden="true">*</span><span class="sr-only">with an asterisk</span> are required.</p>
+        </div>
+        <!-- Dialog method outside a dialog makes even native submission inert in this local preview. -->
+        <form class="contact-form" method="dialog" data-inquiry-form aria-labelledby="inquiry-heading">
+          <div class="contact-field">
+            <label for="inquiry-type">What can we help with?</label>
+            <select id="inquiry-type" name="inquiry_type">
+              <option value="general">General</option>
+              <option value="bulk">Bulk orders</option>
+            </select>
+          </div>
+          <div class="contact-field-row">
+            <div class="contact-field">
+              <label for="inquiry-name">Your name <span aria-hidden="true">*</span></label>
+              <input id="inquiry-name" name="name" type="text" autocomplete="name" maxlength="100" required aria-describedby="inquiry-name-error">
+              <p class="contact-error" id="inquiry-name-error" hidden></p>
+            </div>
+            <div class="contact-field">
+              <label for="inquiry-email">Your email <span aria-hidden="true">*</span></label>
+              <input id="inquiry-email" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="inquiry-email-error">
+              <p class="contact-error" id="inquiry-email-error" hidden></p>
+            </div>
+          </div>
+          <fieldset class="contact-bulk" data-bulk-fields hidden disabled>
+            <legend>For your group <span>(optional)</span></legend>
+            <div class="contact-field-row">
+              <div class="contact-field">
+                <label for="inquiry-organization">Organization</label>
+                <input id="inquiry-organization" name="organization" type="text" autocomplete="organization" maxlength="160" aria-describedby="inquiry-organization-error">
+                <p class="contact-error" id="inquiry-organization-error" hidden></p>
+              </div>
+              <div class="contact-field">
+                <label for="inquiry-copies">Estimated copies</label>
+                <input id="inquiry-copies" name="estimated_copies" type="number" inputmode="numeric" min="1" step="1" aria-describedby="inquiry-copies-error">
+                <p class="contact-error" id="inquiry-copies-error" hidden></p>
+              </div>
+            </div>
+          </fieldset>
+          <div class="contact-field">
+            <label for="inquiry-message">Your message <span aria-hidden="true">*</span></label>
+            <textarea id="inquiry-message" name="message" rows="5" maxlength="5000" required aria-describedby="inquiry-message-error inquiry-privacy"></textarea>
+            <p class="contact-error" id="inquiry-message-error" hidden></p>
+            <p class="contact-privacy" id="inquiry-privacy">Please do not include medical details or sensitive personal information.</p>
+          </div>
+          <div class="contact-actions">
+            <button class="button" type="submit" data-send-inquiry disabled aria-describedby="inquiry-status">Review inquiry</button>
+            <p class="contact-status" id="inquiry-status" data-form-status role="status" aria-live="polite" aria-atomic="true">This is a local form preview. Nothing entered here will be sent.</p>
+            <noscript><p class="contact-no-script">JavaScript is needed to review your inquiry. The review button is disabled, and nothing will be sent.</p></noscript>
+          </div>
+        </form>
+        <section class="contact-preview" data-inquiry-preview hidden aria-labelledby="inquiry-preview-heading">
+          <h3 id="inquiry-preview-heading">Your inquiry preview</h3>
+          <dl>
+            <div><dt>Topic</dt><dd data-preview-value="topic"></dd></div>
+            <div><dt>Your name</dt><dd data-preview-value="name"></dd></div>
+            <div><dt>Your email</dt><dd data-preview-value="email"></dd></div>
+            <div data-preview-row="organization" hidden><dt>Organization</dt><dd data-preview-value="organization"></dd></div>
+            <div data-preview-row="copies" hidden><dt>Estimated copies</dt><dd data-preview-value="copies"></dd></div>
+            <div><dt>Your message</dt><dd data-preview-value="message"></dd></div>
+          </dl>
+        </section>
+      </section>
+    </div>
+  </main>
+  <div class="shell">
+    <footer class="site-footer">
+      <div><strong>Happy Mango Books</strong><p>Ready to Eat &middot; Magan Ester, RDN &middot; Illustrations by Diana Maksymenko</p></div>
+      <p class="site-credit">Designed by A1 Sites &amp; Designs</p>
+    </footer>
+  </div>
+  <script src="../assets/js/site.js"></script>
+  <script src="../assets/js/contact.js"></script>
+</body>
+</html>

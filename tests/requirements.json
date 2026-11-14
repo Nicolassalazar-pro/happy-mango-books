@@ -1,0 +1,231 @@
+{
+  "units": [
+    {
+      "id": "book-intro",
+      "source_id": "site-draft-copy",
+      "source_sha256": "40922b8c6c1d56f873211303812f932c686d8ed400c6fa776c33cddfcd14274f",
+      "route": "/",
+      "heading": "Ready to Eat!",
+      "paragraphs": [
+        "The Guide to Baby's First Foods"
+      ],
+      "qualification": "Little readers. Big firsts.",
+      "role": "opening"
+    },
+    {
+      "id": "guide-context",
+      "source_id": "site-draft-copy",
+      "source_sha256": "40922b8c6c1d56f873211303812f932c686d8ed400c6fa776c33cddfcd14274f",
+      "route": "/",
+      "heading": "A story to share. A guide to keep close.",
+      "paragraphs": [
+        "Bright illustrations and playful sounds give little readers a story to explore. More than 30 expert tips give caregivers something to return to, too."
+      ],
+      "qualification": "Inside Ready to Eat",
+      "role": "detail"
+    },
+    {
+      "id": "about-intro",
+      "source_id": "site-draft-copy",
+      "source_sha256": "40922b8c6c1d56f873211303812f932c686d8ed400c6fa776c33cddfcd14274f",
+      "route": "/about/",
+      "heading": "Meet Magan.",
+      "paragraphs": [
+        "Magan Ester, RDN - author and founder of Happy Mango Books."
+      ],
+      "qualification": "About-page draft",
+      "role": "opening"
+    },
+    {
+      "id": "contact-intro",
+      "source_id": "site-draft-copy",
+      "source_sha256": "40922b8c6c1d56f873211303812f932c686d8ed400c6fa776c33cddfcd14274f",
+      "route": "/contact/",
+      "heading": "Let's start a conversation.",
+      "paragraphs": [
+        "A question about Ready to Eat? Copies to share with a group? Tell us a little about what you have in mind."
+      ],
+      "qualification": "Questions and group orders",
+      "role": "opening"
+    }
+  ],
+  "specification": {
+    "sources": {
+      "site-draft-copy": "40922b8c6c1d56f873211303812f932c686d8ed400c6fa776c33cddfcd14274f"
+    },
+    "direction": {
+      "subject": "option 3's Paper Theatre structure with option 1's Hinged Storybook treatment",
+      "materialRefs": [
+        {
+          "sourceId": "site-draft-copy",
+          "sha256": "40922b8c6c1d56f873211303812f932c686d8ed400c6fa776c33cddfcd14274f"
+        }
+      ]
+    },
+    "baseUrl": "/happy-mango-books/",
+    "viewports": [
+      [
+        1440,
+        1000
+      ],
+      [
+        390,
+        844
+      ]
+    ],
+    "captures": [
+      {
+        "id": "book-intro-1440",
+        "route": "/",
+        "viewport": [
+          1440,
+          1000
+        ],
+        "visibleUnitIds": [
+          "book-intro"
+        ],
+        "target": "[data-unit-id='book-intro']"
+      },
+      {
+        "id": "book-intro-390",
+        "route": "/",
+        "viewport": [
+          390,
+          844
+        ],
+        "visibleUnitIds": [
+          "book-intro"
+        ],
+        "target": "[data-unit-id='book-intro']"
+      },
+      {
+        "id": "guide-context-1440",
+        "route": "/",
+        "viewport": [
+          1440,
+          1000
+        ],
+        "visibleUnitIds": [
+          "guide-context"
+        ],
+        "target": "[data-unit-id='guide-context']"
+      },
+      {
+        "id": "guide-context-390",
+        "route": "/",
+        "viewport": [
+          390,
+          844
+        ],
+        "visibleUnitIds": [
+          "guide-context"
+        ],
+        "target": "[data-unit-id='guide-context']"
+      },
+      {
+        "id": "about-intro-1440",
+        "route": "/about/",
+        "viewport": [
+          1440,
+          1000
+        ],
+        "visibleUnitIds": [
+          "about-intro"
+        ],
+        "target": "[data-unit-id='about-intro']"
+      },
+      {
+        "id": "about-intro-390",
+        "route": "/about/",
+        "viewport": [
+          390,
+          844
+        ],
+        "visibleUnitIds": [
+          "about-intro"
+        ],
+        "target": "[data-unit-id='about-intro']"
+      },
+      {
+        "id": "contact-intro-1440",
+        "route": "/contact/",
+        "viewport": [
+          1440,
+          1000
+        ],
+        "visibleUnitIds": [
+          "contact-intro"
+        ],
+        "target": "[data-unit-id='contact-intro']"
+      },
+      {
+        "id": "contact-intro-390",
+        "route": "/contact/",
+        "viewport": [
+          390,
+          844
+        ],
+        "visibleUnitIds": [
+          "contact-intro"
+        ],
+        "target": "[data-unit-id='contact-intro']"
+      }
+    ],
+    "interactions": [
+      {
+        "id": "hero-read",
+        "expected": {
+          "singleHero": true,
+          "opened": true,
+          "turned": true,
+          "ideasLeft": true,
+          "photoRight": true,
+          "reopened": true
+        },
+        "route": "/"
+      },
+      {
+        "id": "mobile-reader",
+        "expected": {
+          "layout": "single",
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "resizePreservesPage": true
+        },
+        "route": "/"
+      },
+      {
+        "id": "reader-carousel",
+        "expected": {
+          "next": true,
+          "previous": true,
+          "pause": true
+        },
+        "route": "/"
+      },
+      {
+        "id": "bulk-inquiry",
+        "expected": {
+          "bulk": true,
+          "general": true,
+          "sent": false
+        },
+        "route": "/contact/"
+      },
+      {
+        "id": "site-navigation",
+        "expected": {
+          "about": true,
+          "contact": true,
+          "home": true
+        },
+        "route": "/"
+      }
+    ],
+    "motionRequired": false
+  }
+}
