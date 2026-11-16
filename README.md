@@ -4,14 +4,14 @@ A static, book-first website for **Ready to Eat: The Guide to Baby's First Foods
 
 Public demo: https://nicolassalazar-pro.github.io/happy-mango-books/
 
-The demo combines the selected paper-stage layout with one animated hero book, photo-derived page samples, an About-page mockup, reader stories, and a non-sending general/bulk inquiry page. Private reader photographs appear only in the local preview; the public demo uses neutral photo slots.
+The demo combines the selected paper-stage layout with one animated hero book, photo-derived page samples, an About-page mockup, reader stories, and a non-sending general/bulk inquiry page. The two supplied reader photographs are approved for publication and included as metadata-cleared derivatives.
 
 ## Structure
 
 - `site/` - the entire publishable website: HTML, CSS, JavaScript, images and licensed fonts.
 - `tests/site.mjs` - browser, accessibility, responsive-layout and asset-delivery checks.
 - `tests/requirements.json` - public-safe content and interaction expectations.
-- `scripts/preview.py` - allowlisted loopback preview; optional private reader photos never enter `site/`.
+- `scripts/preview.py` - allowlisted loopback preview; raw client folders are never served.
 - `.github/workflows/pages.yml` - deploys only `site/` when website changes reach `main`.
 
 The local `client-materials/`, `archive/` and `.cache/` folders are deliberately excluded from Git. Original client documents, review screenshots, abandoned designs and development evidence must never be published.
@@ -24,7 +24,7 @@ There is no build step or server-side runtime. The review carousel uses a pinned
 npm start
 ```
 
-Open http://127.0.0.1:64972/. The review server reads the private `.cache\hybrid-control\demo-media.json` only when available. Without it, the same pages show neutral reader-photo slots. It never serves raw client folders or sends forms.
+Open http://127.0.0.1:64972/. The normal preview serves the same static images as the public demo and needs no private media manifest. It never serves raw client folders or sends forms.
 
 For browser checks, install the development dependencies and Chromium once:
 
@@ -35,13 +35,13 @@ node .\node_modules\playwright\cli.js install chromium
 npm test
 ```
 
-The checks serve the site beneath `/happy-mango-books/` to verify GitHub project-page URLs, then close their own server. They do not run against the public demo. For this workspace's photo-enabled review, use `node tests\site.mjs --require-demo-photos`. A checkout without the private media manifest exercises the public placeholder version.
+The checks serve the site beneath `/happy-mango-books/` to verify GitHub project-page URLs and approved photo delivery, then close their own server. They do not run against the public demo or use a private photo overlay.
 
 ## Publishing
 
 GitHub Pages uses the pinned GitHub Actions workflow. Updates to `site/` on `main` deploy automatically; only that directory is uploaded. Publication requires explicit user approval.
 
-The pages remain `noindex,nofollow`. Amazon and the business inbox are not configured. Contact reviews input locally and explicitly sends or saves nothing. Reader-photo bytes remain private pending renewed publication permission; the static source contains only neutral slots. The recovered book-page samples have honest missing-photo corners, not generated replacement artwork.
+The pages remain `noindex,nofollow`. Amazon and the business inbox are not configured. Contact reviews input locally and explicitly sends or saves nothing. Publication permission was confirmed for the two reader photos already supplied; future additions need their own confirmation. Raw originals and conversation screenshots remain private. The recovered book-page samples have honest missing-photo corners, not generated replacement artwork.
 
 Book artwork, branding and reader quotations are not offered under an open-source license. Included font licenses are in `site/assets/fonts/`.
 

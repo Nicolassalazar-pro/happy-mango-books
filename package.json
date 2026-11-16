@@ -5,7 +5,7 @@
   "description": "Static Happy Mango Books website and browser checks.",
   "type": "module",
   "scripts": {
-    "start": "python scripts\\preview.py --port 64972 --demo",
+    "start": "python scripts\\preview.py --port 64972",
     "test": "node tests\\site.mjs"
   },
   "devDependencies": {

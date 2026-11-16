@@ -11,13 +11,11 @@ const project = path.dirname(root);
 process.env.PLAYWRIGHT_BROWSERS_PATH ??= path.join(existsSync(path.join(root, ".cache", "playwright")) ? root : project, ".cache", "playwright");
 const { chromium } = await import("playwright");
 const { default: AxeBuilder } = await import("@axe-core/playwright");
-const control = path.join(root, ".cache", "hybrid-control");
 const proof = path.resolve(root, process.env.HMB_PROOF_DIR || path.join(".cache", "hybrid-proof"));
 assert(path.relative(root, proof).startsWith(".cache" + path.sep), "Proof output must stay in the private project cache");
 const requirements = JSON.parse(await fs.readFile(path.join(root, "tests", "requirements.json"), "utf8"));
-const demoManifest = path.join(control, "demo-media.json");
-const hasDemoPhotos = existsSync(demoManifest);
-assert(!process.argv.includes("--require-demo-photos") || hasDemoPhotos, "The required private local-demo manifest is missing");
+const readerPhotos = ["reader-cover.webp", "reader-open.webp"];
+assert(readerPhotos.every(file => existsSync(path.join(root, "site", "assets", "images", file))), "Approved reader-photo assets are missing");
 const { units, specification } = requirements;
 const base = specification.baseUrl;
 const sha = body => crypto.createHash("sha256").update(body).digest("hex");
@@ -42,7 +40,6 @@ await fs.mkdir(proof, { recursive: true });
 const server = spawn("python", [
   "-B", path.join(root, "scripts", "preview.py"), "--workspace", root,
   "--prefix", base.replace(/\/$/, ""),
-  ...(hasDemoPhotos ? ["--media-manifest", demoManifest] : []),
 ], { cwd: root, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 let serverError = "";
 server.stderr.on("data", chunk => { serverError += chunk.toString(); });
@@ -61,6 +58,7 @@ const readiness = await new Promise((resolve, reject) => {
     }
   });
 });
+assert.equal(readiness.demoPhotos, false, "Reader-photo checks must use the public static assets, not a private overlay");
 const target = readiness.url;
 const origin = new URL(target).origin;
 let browser;
@@ -505,12 +503,11 @@ try {
   for (const pathname of [".git/config", ".cache/hybrid-control/demo-media.json", "client-materials/", "__demo__/not-allowed.webp"]) {
     assert.equal((await fetch(new URL(pathname, target))).status, 404);
   }
-  const demo = hasDemoPhotos ? JSON.parse(await fs.readFile(demoManifest, "utf8")) : { photos: [] };
-  for (const photo of demo.photos) {
-    const response = await fetch(new URL(`__demo__/${photo.id}.webp`, target));
+  for (const photo of readerPhotos) {
+    const response = await fetch(new URL(`assets/images/${photo}`, target));
     assert.equal(response.status, 200);
-    assert.equal(sha(Buffer.from(await response.arrayBuffer())), photo.sha256);
-    assert(!files.some(file => file.sha256 === photo.sha256), "Local reader photo leaked into site");
+    assert.equal(sha(Buffer.from(await response.arrayBuffer())), sha(await fs.readFile(path.join(root, "site", "assets", "images", photo))));
+    assert.equal((await fetch(new URL(`__demo__/${photo}`, target))).status, 404, "Public-photo checks must not depend on private overlay routes");
   }
 
   for (const viewport of specification.viewports) {
@@ -568,7 +565,9 @@ try {
   const ideas = await page.locator('[data-reader-page="2"]').boundingBox();
   const photo = await page.locator('[data-reader-page="3"]').boundingBox();
   assert(ideas && photo && ideas.x < photo.x, "Ideas must face the reader photo from the left");
-  assert(await page.locator(`[data-reader-page="3"] ${hasDemoPhotos ? "[data-local-demo-image]" : ".photo-placeholder"}`).first().isVisible());
+  assert.equal(await page.locator('[data-reader-page="3"] [data-reader-photo]').count(), 2);
+  assert(await page.locator('[data-reader-page="3"] [data-reader-photo]').first().isVisible());
+  assert.equal(await page.locator('[data-reader-page="3"] .photo-placeholder, [data-local-demo-image]').count(), 0);
   await page.screenshot({ path: path.join(proof, "desktop-ideas-photo.png"), fullPage: true });
   await turnOnPage(page, 1);
   await bookState(page, "closed", 2);
@@ -866,21 +865,19 @@ try {
   assert(await errorPage.locator("[data-book-retry]").isHidden());
   await failedImages.close();
 
-  if (hasDemoPhotos) {
-    const failedFuture = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
-    await failedFuture.route("**/__demo__/reader-cover.webp", route => route.abort());
-    const futurePage = await failedFuture.newPage();
-    await futurePage.goto(target);
-    await futurePage.locator("[data-book-open]").click();
-    await bookState(futurePage, "open", 0);
-    await turnOnPage(futurePage, 1);
-    await bookState(futurePage, "error", 0);
-    assert(await futurePage.locator('[data-reader-page="0"]').isVisible(), "A failed later image must not remove the last readable spread");
-    await failedFuture.unroute("**/__demo__/reader-cover.webp");
-    await futurePage.locator("[data-book-retry]").click();
-    await bookState(futurePage, "open", 2);
-    await failedFuture.close();
-  }
+  const failedFuture = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+  await failedFuture.route("**/assets/images/reader-cover.webp", route => route.abort());
+  const futurePage = await failedFuture.newPage();
+  await futurePage.goto(target);
+  await futurePage.locator("[data-book-open]").click();
+  await bookState(futurePage, "open", 0);
+  await turnOnPage(futurePage, 1);
+  await bookState(futurePage, "error", 0);
+  assert(await futurePage.locator('[data-reader-page="0"]').isVisible(), "A failed later image must not remove the last readable spread");
+  await failedFuture.unroute("**/assets/images/reader-cover.webp");
+  await futurePage.locator("[data-book-retry]").click();
+  await bookState(futurePage, "open", 2);
+  await failedFuture.close();
   assert.deepEqual(requests.external, []);
   assert.deepEqual(requests.post, []);
   assert.deepEqual(errors, []);
