@@ -9,6 +9,8 @@
   const button = form.querySelector("[data-send-inquiry]");
   const status = form.querySelector("[data-form-status]");
   const preview = document.querySelector("[data-inquiry-preview]");
+  const subject = form.querySelector('[name="_subject"]');
+  const honey = form.querySelector('[name="_honey"]');
   const fields = {
     name: form.querySelector("#inquiry-name"),
     email: form.querySelector("#inquiry-email"),
@@ -16,7 +18,19 @@
     copies: form.querySelector("#inquiry-copies"),
     message: form.querySelector("#inquiry-message"),
   };
-  const demoNote = "This is a demo form. Nothing entered here will be sent.";
+  let state = "idle";
+
+  function setState(next, message) {
+    state = next;
+    form.dataset.inquiryState = next;
+    form.setAttribute("aria-busy", String(next === "sending"));
+    button.disabled = ["sending", "accepted", "uncertain"].includes(next);
+    button.textContent = next === "sending" ? "Sending..." : next === "accepted" ? "Inquiry submitted" :
+      next === "uncertain" ? "Status unconfirmed" : next === "error" ? "Try sending again" : "Send inquiry";
+    topic.disabled = next === "sending";
+    Object.values(fields).forEach(field => { field.readOnly = next === "sending"; });
+    status.textContent = message;
+  }
 
   function clearError(field) {
     field.setCustomValidity("");
@@ -55,22 +69,25 @@
   }
 
   function markEdited() {
-    if (preview.hidden) return;
+    if (state === "sending" || state === "uncertain") return;
+    const submitted = state === "accepted" || !preview.hidden;
     preview.hidden = true;
-    status.textContent = "Review again to see your changes. Nothing entered here will be sent.";
+    setState("idle", submitted ? "You changed this inquiry. Sending again creates a new submission." :
+      "Send your question to info@happymangobooks.com.");
   }
 
   function syncBulkFields() {
     const isBulk = topic.value === "bulk";
     bulkFields.disabled = !isBulk;
     bulkFields.hidden = !isBulk;
+    subject.value = `Happy Mango Books - ${isBulk ? "Bulk order inquiry" : "General inquiry"}`;
     clearError(fields.organization);
     clearError(fields.copies);
   }
 
-  function showPreview() {
+  function values() {
     const isBulk = topic.value === "bulk";
-    const values = {
+    return {
       topic: isBulk ? "A bulk-order request" : "A general inquiry",
       name: fields.name.value.trim(),
       email: fields.email.value.trim(),
@@ -78,28 +95,70 @@
       copies: isBulk ? fields.copies.value : "",
       message: fields.message.value.trim(),
     };
-    for (const [key, value] of Object.entries(values)) {
+  }
+
+  function showSummary(submitted) {
+    for (const [key, value] of Object.entries(submitted)) {
       preview.querySelector(`[data-preview-value="${key}"]`).textContent = value;
     }
     for (const key of ["organization", "copies"]) {
-      preview.querySelector(`[data-preview-row="${key}"]`).hidden = !values[key];
+      preview.querySelector(`[data-preview-row="${key}"]`).hidden = !submitted[key];
     }
     preview.hidden = false;
-    status.textContent = "Your inquiry is ready to review below. This demo has not sent or saved your message.";
   }
 
-  // A future FormSubmit delivery adapter requires separate configuration and live-send proof.
-  // This preview has no transport, recipient, storage, automatic retry or delivery-success state.
-  form.addEventListener("submit", event => {
+  form.addEventListener("submit", async event => {
     event.preventDefault();
+    if (["sending", "accepted", "uncertain"].includes(state)) return;
+    if (honey.value) {
+      setState("error", "This inquiry could not be submitted. Please use the email link instead.");
+      return;
+    }
     const invalidFields = Object.values(fields).filter(field => !validateField(field));
     if (invalidFields.length) {
       preview.hidden = true;
-      status.textContent = "Please check the marked fields. Nothing has been sent.";
+      setState("error", "Please check the marked fields. Nothing has been sent.");
       invalidFields[0].focus();
       return;
     }
-    showPreview();
+    const submitted = values();
+    const payload = Object.fromEntries(new FormData(form));
+    payload.name = submitted.name;
+    payload.email = submitted.email;
+    payload.message = submitted.message;
+    if (topic.value === "bulk") {
+      payload.organization = submitted.organization;
+      payload.estimated_copies = submitted.copies;
+    }
+    preview.hidden = true;
+    setState("sending", "Sending your inquiry...");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(form.dataset.inquiryEndpoint, {
+        method: "POST",
+        headers: { "Accept": "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "omit",
+        redirect: "error",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Unconfirmed submission");
+      const result = await response.json();
+      if (result?.success === true || result?.success === "true") {
+        showSummary(submitted);
+        setState("accepted", "Thank you. FormSubmit accepted your inquiry for Happy Mango Books. A copy is shown below.");
+      } else if (result?.success === false || result?.success === "false") {
+        setState("error", "The form service did not accept your inquiry. Your message is still here. Please email info@happymangobooks.com if this continues.");
+      } else {
+        throw new Error("Unconfirmed submission");
+      }
+    } catch {
+      // A timeout or lost response can happen after acceptance; never resend automatically.
+      setState("uncertain", "We could not confirm whether your inquiry was submitted. Your message is still here. Please email info@happymangobooks.com before sending it again.");
+    } finally {
+      clearTimeout(timer);
+    }
   });
 
   topic.addEventListener("change", () => {
@@ -117,7 +176,6 @@
     topic.value = "bulk";
   }
   syncBulkFields();
-  status.textContent = demoNote;
   form.noValidate = true;
-  button.disabled = false;
+  setState("idle", "Send your question to info@happymangobooks.com.");
 })();

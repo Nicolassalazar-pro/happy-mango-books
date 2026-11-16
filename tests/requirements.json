@@ -213,7 +213,10 @@
         "expected": {
           "bulk": true,
           "general": true,
-          "sent": false
+          "mockedDelivery": true,
+          "duplicateGuard": true,
+          "uncertainNotRetried": true,
+          "realEmailSent": false
         },
         "route": "/contact/"
       },

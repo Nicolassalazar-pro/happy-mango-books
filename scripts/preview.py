@@ -73,14 +73,15 @@ def make_server(workspace, port=0, media_manifest=None, prefix=""):
         def log_message(self, *_):
             return
 
-        def reply(self, status, body=b"", mime="text/plain; charset=utf-8", location=None):
+        def reply(self, status, body=b"", mime="text/plain; charset=utf-8", location=None, inquiry_page=False):
             self.send_response(status)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+            delivery = "https://formsubmit.co" if inquiry_page else "'none'"
+            self.send_header("Content-Security-Policy", f"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src {delivery}; form-action {delivery}; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
             if location:
                 self.send_header("Location", location)
             self.end_headers()
@@ -127,7 +128,7 @@ def make_server(workspace, port=0, media_manifest=None, prefix=""):
             if file.suffix == ".html":
                 body = SLOT.sub(replace_slot, body.decode("utf-8")).encode("utf-8")
             mime = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".woff2": "font/woff2"}.get(file.suffix)
-            self.reply(200, body, mime or mimetypes.guess_type(file.name)[0] or "application/octet-stream")
+            self.reply(200, body, mime or mimetypes.guess_type(file.name)[0] or "application/octet-stream", inquiry_page=key == "contact/index.html")
 
         do_HEAD = do_GET
 

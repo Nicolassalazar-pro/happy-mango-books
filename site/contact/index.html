@@ -8,7 +8,7 @@
   <title>Contact | Happy Mango Books</title>
   <link rel="stylesheet" href="../assets/css/site.css">
   <link rel="stylesheet" href="../assets/css/hybrid.css">
-  <meta http-equiv="Content-Security-Policy" content="form-action 'none'; connect-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="form-action https://formsubmit.co; connect-src https://formsubmit.co">
   <link rel="stylesheet" href="../assets/css/contact.css">
 </head>
 <body class="hybrid subpage" id="top">
@@ -29,14 +29,17 @@
         <p class="unit-qualification">Questions and group orders</p>
         <h1 class="unit-heading" id="contact-heading">Let&#39;s start a conversation.</h1>
         <p class="unit-paragraph">A question about Ready to Eat? Copies to share with a group? Tell us a little about what you have in mind.</p>
+        <p class="contact-email"><a href="mailto:info@happymangobooks.com">info@happymangobooks.com</a></p>
       </section>
       <section class="contact-card" aria-labelledby="inquiry-heading">
         <div class="contact-card-heading">
           <h2 id="inquiry-heading">Your inquiry</h2>
           <p>Fields marked <span aria-hidden="true">*</span><span class="sr-only">with an asterisk</span> are required.</p>
         </div>
-        <!-- Dialog method outside a dialog makes even native submission inert in this local preview. -->
-        <form class="contact-form" method="dialog" data-inquiry-form aria-labelledby="inquiry-heading">
+        <form class="contact-form" method="POST" action="https://formsubmit.co/info@happymangobooks.com" data-inquiry-form data-inquiry-endpoint="https://formsubmit.co/ajax/info@happymangobooks.com" data-inquiry-state="idle" aria-labelledby="inquiry-heading">
+          <input type="hidden" name="_subject" value="Happy Mango Books - Website inquiry">
+          <input type="hidden" name="_template" value="table">
+          <input class="contact-honeypot" type="text" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true">
           <div class="contact-field">
             <label for="inquiry-type">What can we help with?</label>
             <select id="inquiry-type" name="inquiry_type">
@@ -75,16 +78,16 @@
             <label for="inquiry-message">Your message <span aria-hidden="true">*</span></label>
             <textarea id="inquiry-message" name="message" rows="5" maxlength="5000" required aria-describedby="inquiry-message-error inquiry-privacy"></textarea>
             <p class="contact-error" id="inquiry-message-error" hidden></p>
-            <p class="contact-privacy" id="inquiry-privacy">Please do not include medical details or sensitive personal information.</p>
+            <p class="contact-privacy" id="inquiry-privacy">Your inquiry is processed by FormSubmit and emailed to Happy Mango Books. Please do not include medical details or sensitive personal information.</p>
           </div>
           <div class="contact-actions">
-            <button class="button" type="submit" data-send-inquiry disabled aria-describedby="inquiry-status">Review inquiry</button>
-            <p class="contact-status" id="inquiry-status" data-form-status role="status" aria-live="polite" aria-atomic="true">This is a demo form. Nothing entered here will be sent.</p>
-            <noscript><p class="contact-no-script">JavaScript is needed to review your inquiry. The review button is disabled, and nothing will be sent.</p></noscript>
+            <button class="button" type="submit" data-send-inquiry aria-describedby="inquiry-status">Send inquiry</button>
+            <p class="contact-status" id="inquiry-status" data-form-status role="status" aria-live="polite" aria-atomic="true">Send your question to info@happymangobooks.com.</p>
+            <noscript><p class="contact-no-script">Sending will open FormSubmit to complete your submission. You can also use the email link above.</p></noscript>
           </div>
         </form>
         <section class="contact-preview" data-inquiry-preview hidden aria-labelledby="inquiry-preview-heading">
-          <h3 id="inquiry-preview-heading">Your inquiry preview</h3>
+          <h3 id="inquiry-preview-heading">Your submitted inquiry</h3>
           <dl>
             <div><dt>Topic</dt><dd data-preview-value="topic"></dd></div>
             <div><dt>Your name</dt><dd data-preview-value="name"></dd></div>

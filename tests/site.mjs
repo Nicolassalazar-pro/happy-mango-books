@@ -63,7 +63,11 @@ const target = readiness.url;
 const origin = new URL(target).origin;
 let browser;
 const errors = [];
-const requests = { external: [], post: [] };
+const requestLog = [];
+const mockedRequests = new WeakSet();
+const formEndpoint = "https://formsubmit.co/ajax/info@happymangobooks.com";
+const nativeFormEndpoint = "https://formsubmit.co/info@happymangobooks.com";
+const formMock = { mode: "forbidden", requests: [], ready: null, release: null };
 const report = { startedAt: new Date().toISOString(), target, cases: [], captures: [], errors };
 const observation = {
   artifactSha256: fingerprint(files), requirementsSha256: fingerprint(requirements),
@@ -73,14 +77,54 @@ const observation = {
 
 function watch(page) {
   page.on("pageerror", error => errors.push(error.message));
-  page.on("request", request => {
-    const url = request.url();
-    if (!url.startsWith(origin + "/") && !url.startsWith("data:")) requests.external.push(url);
-    if (request.method() !== "GET") requests.post.push({ method: request.method(), url });
-  });
+  page.on("request", request => requestLog.push(request));
   page.on("response", response => {
-    if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`);
+    if (response.status() >= 400 && !mockedRequests.has(response.request())) errors.push(`${response.status()} ${response.url()}`);
   });
+}
+
+function actualRequests() {
+  const real = requestLog.filter(request => !mockedRequests.has(request));
+  return {
+    external: real.filter(request => !request.url().startsWith(origin + "/") && !request.url().startsWith("data:")).map(request => request.url()),
+    post: real.filter(request => request.method() !== "GET").map(request => ({ method: request.method(), url: request.url() })),
+  };
+}
+
+async function testContext(options) {
+  const context = await browser.newContext(options);
+  await context.route("https://formsubmit.co/**", async route => {
+    const request = route.request();
+    mockedRequests.add(request);
+    const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, accept" };
+    if (request.method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers, body: "" });
+      return;
+    }
+    if (formMock.mode === "forbidden" || request.method() !== "POST" || ![formEndpoint, nativeFormEndpoint].includes(request.url())) {
+      errors.push("Unexpected provider request blocked by the test fixture");
+      await route.abort();
+      return;
+    }
+    const payload = request.headers()["content-type"]?.includes("application/json")
+      ? request.postDataJSON() : Object.fromEntries(new URLSearchParams(request.postData() || ""));
+    const mode = formMock.mode;
+    formMock.requests.push({ url: request.url(), payload });
+    if (mode === "hold") {
+      await new Promise(resolve => { formMock.release = resolve; formMock.ready?.(); });
+    }
+    if (mode === "abort") {
+      await route.abort();
+      return;
+    }
+    if (mode === "native") {
+      await route.fulfill({ status: 200, contentType: "text/html", body: '<!doctype html><html lang="en"><title>Mock provider</title><link rel="icon" href="data:,"><body><p>Mock provider handoff</p></body></html>' });
+      return;
+    }
+    const result = mode === "reject" ? { success: false } : { success: "true" };
+    await route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify(result) });
+  });
+  return context;
 }
 
 async function settled(page) {
@@ -512,7 +556,7 @@ try {
   }
 
   for (const viewport of specification.viewports) {
-    const context = await browser.newContext({ viewport: { width: viewport[0], height: viewport[1] }, reducedMotion: "reduce", deviceScaleFactor: 1 });
+    const context = await testContext({ viewport: { width: viewport[0], height: viewport[1] }, reducedMotion: "reduce", deviceScaleFactor: 1 });
     for (const route of ["/", "/about/", "/contact/"]) {
       const page = await context.newPage();
       watch(page);
@@ -537,7 +581,7 @@ try {
   }
 
   for (const width of [1920, 2560]) {
-    const wide = await browser.newContext({ viewport: { width, height: 1080 }, reducedMotion: "reduce" });
+    const wide = await testContext({ viewport: { width, height: 1080 }, reducedMotion: "reduce" });
     const widePage = await wide.newPage();
     watch(widePage);
     for (const route of ["", "about/", "contact/"]) {
@@ -558,7 +602,7 @@ try {
     await wide.close();
   }
 
-  const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+  const desktop = await testContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
   const page = await desktop.newPage();
   watch(page);
   await page.goto(target);
@@ -654,17 +698,63 @@ try {
   assert(await page.locator("[data-bulk-fields]").isVisible());
   await page.locator("#inquiry-type").selectOption("general");
   assert(await page.locator("[data-bulk-fields]").isHidden());
+  await page.locator("[data-inquiry-form]").evaluate(form => form.requestSubmit());
+  assert.equal(await page.locator("[data-inquiry-form]").getAttribute("data-inquiry-state"), "error");
+  assert.equal(formMock.requests.length, 0, "Invalid inquiries must not contact the provider");
+  await page.locator('[name="_honey"]').evaluate(node => { node.value = "fixture bot"; });
+  await page.locator("[data-inquiry-form]").evaluate(form => form.requestSubmit());
+  assert.equal(formMock.requests.length, 0, "The honeypot must block delivery");
+  await page.locator('[name="_honey"]').evaluate(node => { node.value = ""; });
   await page.getByRole("textbox", { name: "Your name", exact: true }).fill("Sample Reader");
   await page.getByRole("textbox", { name: "Your email", exact: true }).fill("reader@example.invalid");
   await page.getByRole("textbox", { name: "Your message", exact: true }).fill("A local-only fixture inquiry.");
+  assert.equal(await page.locator("[data-inquiry-form]").getAttribute("action"), nativeFormEndpoint);
+  formMock.mode = "hold";
+  const requestStarted = new Promise(resolve => { formMock.ready = resolve; });
   await page.locator("[data-inquiry-form]").evaluate(form => { form.requestSubmit(); form.requestSubmit(); });
-  assert(/not sent|nothing.*sent|has not sent|not.*saved|not.*send/i.test(await page.locator("[data-form-status]").innerText()));
+  await requestStarted;
+  assert.equal(formMock.requests.length, 1, "Duplicate submit must not dispatch another inquiry");
+  assert(await page.locator("[data-send-inquiry]").isDisabled());
+  assert(await page.getByRole("textbox", { name: "Your message", exact: true }).evaluate(node => node.readOnly));
+  assert.equal(formMock.requests[0].url, formEndpoint);
+  assert.equal(formMock.requests[0].payload._subject, "Happy Mango Books - General inquiry");
+  assert.equal(formMock.requests[0].payload._template, "table");
+  assert(!("organization" in formMock.requests[0].payload));
+  assert(!("_captcha" in formMock.requests[0].payload), "Provider CAPTCHA defaults must not be disabled");
+  formMock.release();
+  await page.waitForFunction(() => document.querySelector("[data-inquiry-form]").dataset.inquiryState === "accepted");
+  assert(/accepted/i.test(await page.locator("[data-form-status]").innerText()));
+  await page.locator("[data-inquiry-form]").evaluate(form => form.requestSubmit());
+  assert.equal(formMock.requests.length, 1);
   assert.equal(await page.getByRole("textbox", { name: "Your message", exact: true }).inputValue(), "A local-only fixture inquiry.");
+  await page.locator("#inquiry-type").selectOption("bulk");
+  await page.locator("#inquiry-organization").fill("Sample reading group");
+  await page.locator("#inquiry-copies").fill("24");
+  formMock.mode = "success";
+  await page.locator("[data-send-inquiry]").click();
+  await page.waitForFunction(() => document.querySelector("[data-inquiry-form]").dataset.inquiryState === "accepted");
+  assert.equal(formMock.requests.length, 2);
+  assert.equal(formMock.requests[1].payload._subject, "Happy Mango Books - Bulk order inquiry");
+  assert.equal(formMock.requests[1].payload.organization, "Sample reading group");
+  assert.equal(formMock.requests[1].payload.estimated_copies, "24");
+  await page.getByRole("textbox", { name: "Your message", exact: true }).fill("A rejected fixture inquiry.");
+  formMock.mode = "reject";
+  await page.locator("[data-send-inquiry]").click();
+  await page.waitForFunction(() => document.querySelector("[data-inquiry-form]").dataset.inquiryState === "error");
+  assert(await page.locator("[data-send-inquiry]").isEnabled());
+  formMock.mode = "abort";
+  await page.locator("[data-send-inquiry]").click();
+  await page.waitForFunction(() => document.querySelector("[data-inquiry-form]").dataset.inquiryState === "uncertain");
+  assert(await page.locator("[data-send-inquiry]").isDisabled());
+  assert.equal(await page.getByRole("textbox", { name: "Your message", exact: true }).inputValue(), "A rejected fixture inquiry.");
+  await page.locator("[data-inquiry-form]").evaluate(form => form.requestSubmit());
+  assert.equal(formMock.requests.length, 4, "An uncertain send must not be replayed");
   assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0);
-  observation.interactions.push({ id: "bulk-inquiry", actual: { bulk: true, general: true, sent: false } });
+  formMock.mode = "forbidden";
+  observation.interactions.push({ id: "bulk-inquiry", actual: { bulk: true, general: true, mockedDelivery: true, duplicateGuard: true, uncertainNotRetried: true, realEmailSent: false } });
   await desktop.close();
 
-  const storiesContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "no-preference" });
+  const storiesContext = await testContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "no-preference" });
   const storiesPage = await storiesContext.newPage();
   watch(storiesPage);
   await storiesPage.goto(target);
@@ -729,7 +819,7 @@ try {
   report.cases.push({ case: "first-page-reopen-and-document-click-away", status: "passed" });
   await storiesContext.close();
 
-  const touchStories = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", hasTouch: true });
+  const touchStories = await testContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", hasTouch: true });
   const touchStoriesPage = await touchStories.newPage();
   watch(touchStoriesPage);
   await touchStoriesPage.goto(target);
@@ -737,7 +827,7 @@ try {
   await touchCarousel(touchStoriesPage, touchStories);
   await touchStories.close();
 
-  const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", hasTouch: true });
+  const mobile = await testContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", hasTouch: true });
   const phone = await mobile.newPage();
   watch(phone);
   await phone.goto(target);
@@ -805,7 +895,7 @@ try {
 
   const alignment = [];
   for (const width of [1440, 390]) {
-    const context = await browser.newContext({ viewport: { width, height: width === 1440 ? 1000 : 844 }, reducedMotion: "no-preference" });
+    const context = await testContext({ viewport: { width, height: width === 1440 ? 1000 : 844 }, reducedMotion: "no-preference" });
     const alignmentPage = await context.newPage();
     watch(alignmentPage);
     await alignmentPage.goto(target);
@@ -822,7 +912,7 @@ try {
   await fs.writeFile(path.join(proof, "book-image-alignment.json"), JSON.stringify(alignment, null, 2) + "\n");
   report.cases.push({ case: "aligned-animated-page-handoffs-and-stable-book-height", status: "passed" });
 
-  const narrow = await browser.newContext({ viewport: { width: 320, height: 760 }, reducedMotion: "reduce" });
+  const narrow = await testContext({ viewport: { width: 320, height: 760 }, reducedMotion: "reduce" });
   const narrowPage = await narrow.newPage();
   watch(narrowPage);
   for (const route of ["", "about/", "contact/"]) {
@@ -844,7 +934,7 @@ try {
   }
   await narrow.close();
 
-  const noJs = await browser.newContext({ viewport: { width: 390, height: 844 }, javaScriptEnabled: false });
+  const noJs = await testContext({ viewport: { width: 390, height: 844 }, javaScriptEnabled: false });
   const noPage = await noJs.newPage();
   watch(noPage);
   await noPage.goto(target);
@@ -859,10 +949,20 @@ try {
   await noPage.goto(new URL("contact/", target).href);
   await noPage.getByRole("textbox", { name: "Your name", exact: true }).fill("Sample Reader");
   await noPage.getByRole("textbox", { name: "Your name", exact: true }).press("Enter");
-  assert(await noPage.locator("[data-send-inquiry]").isDisabled());
+  assert(await noPage.locator("[data-send-inquiry]").isEnabled());
+  assert.equal(formMock.requests.length, 4, "Native required-field validation must prevent empty submissions");
+  await noPage.getByRole("textbox", { name: "Your email", exact: true }).fill("reader@example.invalid");
+  await noPage.getByRole("textbox", { name: "Your message", exact: true }).fill("A native fallback fixture.");
+  formMock.mode = "native";
+  await noPage.locator("[data-send-inquiry]").click();
+  await noPage.waitForURL(nativeFormEndpoint);
+  assert.equal(formMock.requests.length, 5);
+  assert.equal(formMock.requests[4].url, nativeFormEndpoint);
+  assert.equal(formMock.requests[4].payload.message, "A native fallback fixture.");
+  formMock.mode = "forbidden";
   await noJs.close();
 
-  const missingCarousel = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  const missingCarousel = await testContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
   await missingCarousel.route("**/assets/js/vendor/embla-carousel-8.6.0.umd.js", route => route.abort());
   const fallbackReviews = await missingCarousel.newPage();
   await fallbackReviews.goto(target);
@@ -871,7 +971,7 @@ try {
   assert.equal(await fallbackReviews.locator("[data-story-card]:visible").count(), 3);
   await missingCarousel.close();
 
-  const failedImages = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  const failedImages = await testContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
   await failedImages.route("**/assets/images/sample-left*.webp", route => route.abort());
   const errorPage = await failedImages.newPage();
   await errorPage.goto(target);
@@ -888,7 +988,7 @@ try {
   assert(await errorPage.locator("[data-book-retry]").isHidden());
   await failedImages.close();
 
-  const failedFuture = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+  const failedFuture = await testContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
   await failedFuture.route("**/assets/images/reader-cover.webp", route => route.abort());
   const futurePage = await failedFuture.newPage();
   await futurePage.goto(target);
@@ -901,6 +1001,7 @@ try {
   await futurePage.locator("[data-book-retry]").click();
   await bookState(futurePage, "open", 2);
   await failedFuture.close();
+  const requests = actualRequests();
   assert.deepEqual(requests.external, []);
   assert.deepEqual(requests.post, []);
   assert.deepEqual(errors, []);
@@ -917,7 +1018,8 @@ try {
 } finally {
   await browser?.close();
   server.kill();
-  report.requests = requests;
+  report.requests = actualRequests();
+  report.mockedFormRequests = formMock.requests;
   report.finishedAt = new Date().toISOString();
   await fs.writeFile(path.join(proof, "checks.json"), JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify({ status: report.status, cases: report.cases.length, failure: report.failure, proof }, null, 2));
