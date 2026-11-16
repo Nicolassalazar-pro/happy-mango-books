@@ -39,10 +39,9 @@
   content: "";
   position: absolute;
   z-index: -1;
-  inset: 7% -2% 2%;
+  inset: 7% 0 2%;
   background: var(--mint);
   border-radius: 44% 51% 43% 48%;
-  transform: rotate(5deg);
 }
 .about-paper {
   padding: 12px;

@@ -1,5 +1,5 @@
 .hybrid { --ink: #28224f; --muted: #58516b; --paper: #fffbed; --canvas: #e6dff6; --teal: #126a6a; --mint: #a9d7c9; --edge: #c5b6d9; --display: "Nerko", sans-serif; color: var(--ink); background-color: var(--canvas); background-image: linear-gradient(90deg, #ffffff60 50%, transparent 50%), linear-gradient(#ffffff60 50%, transparent 50%); background-size: 76px 76px; font-size: 1rem; line-height: 1.65; }
-.hybrid .shell { width: min(100%, 1320px); padding-inline: clamp(20px, 5vw, 68px); margin-inline: auto; }
+.hybrid .shell { width: 100%; max-width: none; padding-inline: clamp(20px, 2.5vw, 48px); margin-inline: auto; }
 .hybrid .site-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 98px; border-bottom: 1px solid var(--edge); }
 .hybrid .brand { display: inline-flex; padding: 8px 0; flex: 0 0 auto; }
 .hybrid .brand img { width: 132px; height: auto; }
@@ -32,7 +32,7 @@
 .guide-notes span { padding-bottom: 6px; border-bottom: 1px solid #fffbed70; }
 .bulk-section { display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 30px 65px; margin-block: 18px 55px; padding: 34px 40px; background: var(--paper); border: 1px solid #d7cdb6; border-radius: 25px 38px 24px 31px; box-shadow: 0 3px 0 #ab9ab915; }
 .bulk-section h2 { font-size: clamp(2.4rem, 3.6vw, 3.5rem); margin-top: 12px; }
-.bulk-section p { color: var(--muted); }
+.bulk-section p { max-width: 50ch; color: var(--muted); }
 .bulk-section .button { margin-top: 22px; }
 .hybrid .site-footer { display: flex; justify-content: space-between; align-items: end; gap: 24px; color: var(--muted); font-size: .75rem; border-top: 1px solid var(--edge); padding: 23px 0 28px; }
 .hybrid .site-footer strong { font-size: .8125rem; color: var(--ink); }

@@ -9,6 +9,7 @@
   --hb-plate-angle: 7deg;
   --hb-plate-width: var(--hb-plate-closed-width);
   position: relative;
+  width: min(100%, 90vw);
   max-width: 1184px;
   margin-inline: auto;
   text-align: center;

@@ -477,7 +477,8 @@ async function touchCarousel(page, context) {
   await reviewState(page, 0);
   const beforeScroll = await page.evaluate(() => scrollY);
   await swipe(0, -140);
-  await page.waitForTimeout(300);
+  // Chromium can suppress the first emulated tap immediately after a native scroll.
+  await page.waitForTimeout(750);
   assert(await page.evaluate(() => scrollY) > beforeScroll, "Vertical swipes must scroll the document");
   await reviewState(page, 0);
   assert.equal(await root.getAttribute("data-carousel-state"), "reduced-motion");
@@ -533,6 +534,28 @@ try {
       await page.close();
     }
     await context.close();
+  }
+
+  for (const width of [1920, 2560]) {
+    const wide = await browser.newContext({ viewport: { width, height: 1080 }, reducedMotion: "reduce" });
+    const widePage = await wide.newPage();
+    watch(widePage);
+    for (const route of ["", "about/", "contact/"]) {
+      await widePage.goto(new URL(route, target).href);
+      await settled(widePage);
+      await layout(widePage);
+      assert(await widePage.locator(".site-header, .site-footer").evaluateAll(nodes => nodes.every(node => {
+        const box = node.getBoundingClientRect();
+        return box.left >= 16 && box.left <= 50 && innerWidth - box.right >= 16 && innerWidth - box.right <= 50;
+      })), "Wide layouts must use the viewport with small, retained side gutters");
+      await widePage.screenshot({ path: path.join(proof, `wide-${route ? route.split("/")[0] : "home"}-${width}.png`), fullPage: true });
+      if (route === "about/") {
+        await widePage.evaluate(() => document.documentElement.style.fontSize = "200%");
+        await layout(widePage);
+      }
+      report.cases.push({ case: "fluid-wide-layout", route: route || "/", width, status: "passed" });
+    }
+    await wide.close();
   }
 
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
