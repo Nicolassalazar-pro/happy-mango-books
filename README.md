@@ -2,9 +2,9 @@
 
 A static, book-first website for **Ready to Eat: The Guide to Baby's First Foods**.
 
-Existing published demo: https://nicolassalazar-pro.github.io/happy-mango-books/
+Public demo: https://nicolassalazar-pro.github.io/happy-mango-books/
 
-This local refinement is not that deployed version. It combines the selected paper-stage layout with one animated hero book, photo-derived page samples, About, reader stories, and a non-sending general/bulk inquiry page.
+The demo combines the selected paper-stage layout with one animated hero book, photo-derived page samples, an About-page mockup, reader stories, and a non-sending general/bulk inquiry page. Private reader photographs appear only in the local preview; the public demo uses neutral photo slots.
 
 ## Structure
 
@@ -18,7 +18,7 @@ The local `client-materials/`, `archive/` and `.cache/` folders are deliberately
 
 ## Local use
 
-There is no build step or runtime dependency. From the project folder:
+There is no build step or server-side runtime. The review carousel uses a pinned, self-hosted Embla Carousel 8.6.0 bundle; it does not load a CDN or contact a third party. From the project folder:
 
 ```powershell
 npm start
@@ -35,12 +35,16 @@ node .\node_modules\playwright\cli.js install chromium
 npm test
 ```
 
-The checks serve the site beneath `/happy-mango-books/` to verify future GitHub project-page URLs, then close their own server. They never run against the existing public demo. For this workspace's required photo-enabled review, use `node tests\site.mjs --require-demo-photos`.
+The checks serve the site beneath `/happy-mango-books/` to verify GitHub project-page URLs, then close their own server. They do not run against the public demo. For this workspace's photo-enabled review, use `node tests\site.mjs --require-demo-photos`. A checkout without the private media manifest exercises the public placeholder version.
 
 ## Publishing
 
-GitHub Pages uses the unchanged GitHub Actions workflow. Updates to `site/` on `main` deploy automatically; only that directory is uploaded. Do not push this local refinement to `main` until the user approves the final merge/publication.
+GitHub Pages uses the pinned GitHub Actions workflow. Updates to `site/` on `main` deploy automatically; only that directory is uploaded. Publication requires explicit user approval.
 
 The pages remain `noindex,nofollow`. Amazon and the business inbox are not configured. Contact reviews input locally and explicitly sends or saves nothing. Reader-photo bytes remain private pending renewed publication permission; the static source contains only neutral slots. The recovered book-page samples have honest missing-photo corners, not generated replacement artwork.
 
 Book artwork, branding and reader quotations are not offered under an open-source license. Included font licenses are in `site/assets/fonts/`.
+
+Embla Carousel is MIT-licensed. Its unchanged release bundle and license are included in `site\assets\js\vendor`; the matching package version is pinned in the development dependencies for reproducibility.
+
+The review cards use an original layered renderer over that pinned engine's input and loop coordinates, not its default horizontal layout. Cards stay level while moving through the foreground/background. Keep the 8.6.0 bundle and renderer in sync when upgrading. Quotes remain semantic HTML; without the engine, the same cards form a readable static list. The labeled demo scores are visual placeholders, not verified reviewer ratings.

@@ -16,7 +16,7 @@
     copies: form.querySelector("#inquiry-copies"),
     message: form.querySelector("#inquiry-message"),
   };
-  const localNote = "This is a local form preview. Nothing entered here will be sent.";
+  const demoNote = "This is a demo form. Nothing entered here will be sent.";
 
   function clearError(field) {
     field.setCustomValidity("");
@@ -85,7 +85,7 @@
       preview.querySelector(`[data-preview-row="${key}"]`).hidden = !values[key];
     }
     preview.hidden = false;
-    status.textContent = "Your inquiry is ready to review below. This local preview has not sent or saved your message.";
+    status.textContent = "Your inquiry is ready to review below. This demo has not sent or saved your message.";
   }
 
   // A future FormSubmit delivery adapter requires separate configuration and live-send proof.
@@ -117,7 +117,7 @@
     topic.value = "bulk";
   }
   syncBulkFields();
-  status.textContent = localNote;
+  status.textContent = demoNote;
   form.noValidate = true;
   button.disabled = false;
 })();

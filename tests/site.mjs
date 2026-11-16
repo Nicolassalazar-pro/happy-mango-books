@@ -12,7 +12,8 @@ process.env.PLAYWRIGHT_BROWSERS_PATH ??= path.join(existsSync(path.join(root, ".
 const { chromium } = await import("playwright");
 const { default: AxeBuilder } = await import("@axe-core/playwright");
 const control = path.join(root, ".cache", "hybrid-control");
-const proof = path.join(root, ".cache", "hybrid-proof");
+const proof = path.resolve(root, process.env.HMB_PROOF_DIR || path.join(".cache", "hybrid-proof"));
+assert(path.relative(root, proof).startsWith(".cache" + path.sep), "Proof output must stay in the private project cache");
 const requirements = JSON.parse(await fs.readFile(path.join(root, "tests", "requirements.json"), "utf8"));
 const demoManifest = path.join(control, "demo-media.json");
 const hasDemoPhotos = existsSync(demoManifest);
@@ -96,8 +97,23 @@ async function layout(page) {
   assert.equal(await page.locator("dialog, [role='dialog'], iframe, a[href^='tel:'], input[type='tel']").count(), 0);
   assert.equal(await page.locator(".site-credit").innerText(), "Designed by A1 Sites & Designs");
   assert.equal(await page.locator(".site-nav [aria-current='page']").count(), 1);
+  assert.equal(await page.locator("[data-book-thumb], [data-book-thumbnails], #book-sample-note").count(), 0);
+  assert.equal(await page.locator(".hb-toolbar, .hb-step, .hb-close").count(), 0);
+  assert(await page.locator(".hb-access-key").evaluateAll(buttons => buttons.every(button => {
+    const box = button.getBoundingClientRect();
+    return button.matches(":focus-visible") || box.width <= 1 && box.height <= 1;
+  })), "Keyboard-only controls should not leave a visible control strip");
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Horizontal overflow");
   assert(await page.evaluate(() => [...document.images].filter(image => image.getClientRects().length).every(image => image.complete && image.naturalWidth)), "A visible image is broken");
+  assert(await page.evaluate(() => {
+    const plate = document.querySelector(".hb-enhanced .hb-plate");
+    if (!plate) return true;
+    const rim = plate.getBoundingClientRect();
+    return [...document.querySelectorAll(".hb-food")].every(food => {
+      const art = food.getBoundingClientRect();
+      return art.left >= 0 && art.right <= innerWidth && art.right > rim.left && art.left < rim.right;
+    });
+  }), "Food artwork must stay close to the plate and inside the viewport");
 }
 
 async function bookState(page, state, index) {
@@ -105,6 +121,155 @@ async function bookState(page, state, index) {
     const book = document.querySelector("[data-hero-book]");
     return book?.dataset.state === expectedState && (expectedIndex === null || book.dataset.page === String(expectedIndex));
   }, [state, index ?? null]);
+}
+
+async function turnOnPage(page, direction, touch = false) {
+  const spread = await page.locator("[data-hero-book]").getAttribute("data-layout") === "spread";
+  const pages = page.locator(".hb-pages > [data-reader-page]:visible");
+  const leaf = spread ? pages.nth(direction > 0 ? 1 : 0) : pages.first();
+  const box = await leaf.boundingBox();
+  const options = { position: { x: box.width * (direction > 0 ? .8 : .2), y: box.height * .4 } };
+  if (touch) await leaf.tap(options);
+  else await leaf.click(options);
+}
+
+async function closeOnPlate(page, touch = false) {
+  const stage = page.locator(".hb-stage");
+  await stage.scrollIntoViewIfNeeded();
+  const box = await stage.boundingBox();
+  const options = { position: { x: box.width / 2, y: 24 } };
+  if (touch) await stage.tap(options);
+  else await stage.click(options);
+}
+
+async function plateOpeningMotion(page, closedWidth) {
+  await page.waitForFunction(() => document.querySelector(".hb-plate").getAnimations().length > 0);
+  const samples = await page.evaluate(async () => {
+    const root = document.querySelector("[data-hero-book]");
+    const animations = root.getAnimations({ subtree: true }).filter(animation => animation.effect.getTiming().iterations !== Infinity);
+    animations.forEach(animation => animation.pause());
+    const samples = [];
+    for (const phase of [0, .14, .35, .63, .82, 1]) {
+      animations.forEach(animation => { animation.currentTime = Number(animation.effect.getTiming().duration) * phase; });
+      await new Promise(requestAnimationFrame);
+      const plate = root.querySelector(".hb-plate");
+      const material = getComputedStyle(plate);
+      const matrix = new DOMMatrixReadOnly(material.transform);
+      const box = plate.getBoundingClientRect();
+      samples.push({
+        phase, width: parseFloat(material.width),
+        foodWidth: parseFloat(getComputedStyle(root.querySelector(".hb-foods")).width),
+        scale: Math.hypot(matrix.a, matrix.b), angle: Math.atan2(matrix.b, matrix.a) * 180 / Math.PI,
+        withinViewport: box.left >= 0 && box.right <= innerWidth,
+      });
+    }
+    animations.forEach(animation => animation.finish());
+    return samples;
+  });
+  assert(Math.abs(samples[0].width - closedWidth) < 1, "The expanding plate must begin at its closed size");
+  assert(samples[2].width > samples[0].width && samples[2].width < samples.at(-1).width, "The plate must actually grow through intermediate sizes");
+  assert(samples.some(sample => sample.scale < .99) && samples.some(sample => sample.scale > 1.01), "The plate must stretch and gently overshoot");
+  assert(Math.abs(samples.at(-1).scale - 1) < .001, "The plate must settle to its normal shape");
+  assert(samples.every(sample => sample.withinViewport && Math.abs(sample.width - sample.foodWidth) < .1), "Food placement must follow the plate without viewport overflow");
+  await fs.writeFile(path.join(proof, "plate-opening-motion.json"), JSON.stringify(samples, null, 2) + "\n");
+}
+
+async function bookImageAlignment(page) {
+  const layout = await page.locator("[data-hero-book]").getAttribute("data-layout");
+  const snapshot = () => page.evaluate(() => {
+    const root = document.querySelector("[data-hero-book]");
+    const anchor = root.querySelector(".hb-layout").getBoundingClientRect();
+    return {
+      page: root.dataset.page, height: anchor.height, top: anchor.y + scrollY,
+      images: [...root.querySelectorAll(".hb-page img")].filter(image => image.getClientRects().length && !image.closest(".hb-measure")).map(image => {
+        const box = image.getBoundingClientRect();
+        return {
+          src: image.getAttribute("src"),
+          owner: image.closest(".hb-underlay") ? "underlay" : image.closest(".hb-turn-front") ? "front" : image.closest(".hb-turn-back") ? "back" : "real",
+          x: box.x - anchor.x, y: box.y - anchor.y, width: box.width, height: box.height,
+        };
+      }),
+    };
+  });
+  const compare = (copy, originals) => {
+    const original = originals.find(image => image.owner === "real" && image.src === copy.src);
+    assert(original, "Animated imagery needs a matching real page");
+    const delta = Object.fromEntries(["x", "y", "width", "height"].map(key => [key, Math.abs(copy[key] - original[key])]));
+    // The thin 3D leaf has subpixel projection depth; its content box must otherwise match.
+    assert(Math.max(...Object.values(delta)) < .6, `Image jumps at page handoff: ${copy.src} ${JSON.stringify(delta)}`);
+    return { src: copy.src, owner: copy.owner, delta };
+  };
+  const records = [];
+  for (const direction of layout === "spread" ? [1, -1] : [1, 1, 1, -1, -1, -1]) {
+    const before = await snapshot();
+    await page.locator("[data-reader-panel]").press(direction > 0 ? "ArrowRight" : "ArrowLeft");
+    await page.waitForFunction(() => !document.querySelector("[data-page-turn]").hidden);
+    await page.evaluate(() => {
+      const animations = document.querySelector("[data-hero-book]").getAnimations({ subtree: true }).filter(animation => animation.effect.getTiming().iterations !== Infinity);
+      animations.forEach(animation => { animation.pause(); animation.currentTime = 0; });
+    });
+    await page.waitForTimeout(20);
+    const start = await snapshot();
+    const sourceOwners = direction > 0 ? ["front"] : layout === "spread" ? ["back"] : [];
+    const source = start.images.filter(image => sourceOwners.includes(image.owner)).map(image => compare(image, before.images));
+    await page.evaluate(() => {
+      document.querySelector("[data-hero-book]").getAnimations({ subtree: true }).filter(animation => animation.effect.getTiming().iterations !== Infinity)
+        .forEach(animation => { animation.currentTime = Number(animation.effect.getTiming().duration) - .01; });
+    });
+    await page.waitForTimeout(20);
+    const end = await snapshot();
+    await page.evaluate(() => {
+      document.querySelector("[data-hero-book]").getAnimations({ subtree: true }).filter(animation => animation.effect.getTiming().iterations !== Infinity)
+        .forEach(animation => animation.finish());
+    });
+    await bookState(page, "open");
+    const after = await snapshot();
+    const destinationOwners = direction < 0 ? ["underlay", "front"] : layout === "spread" ? ["underlay", "back"] : ["underlay"];
+    const destination = end.images.filter(image => destinationOwners.includes(image.owner)).map(image => compare(image, after.images));
+    assert(Math.abs(before.height - after.height) < .1 && Math.abs(start.height - after.height) < .1, "Open-book height must not change between leaves");
+    assert(Math.abs(before.top - after.top) < .1, "Page changes must not move the book in document flow");
+    records.push({ layout, from: before.page, to: after.page, height: after.height, source, destination });
+  }
+  return records;
+}
+
+async function cornerNotes(page) {
+  const checks = await page.locator(".hb-pages > .hb-sample:visible").evaluateAll(pages => pages.map(page => {
+    const image = page.querySelector(".hb-sample-art");
+    const note = page.querySelector(".hb-corner-note");
+    const imageBox = image.getBoundingClientRect();
+    if (getComputedStyle(note).position === "static") {
+      // Adjacent 3D-projected rectangles can differ by a fraction of a CSS pixel.
+      return { text: note.textContent, inFlow: note.getBoundingClientRect().top >= imageBox.bottom - .01, overlap: 0 };
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const alpha = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const walker = document.createTreeWalker(note, NodeFilter.SHOW_TEXT);
+    let text, overlap = 0;
+    while ((text = walker.nextNode())) {
+      if (!text.textContent.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      for (const box of range.getClientRects()) {
+        const x0 = Math.floor((box.left - imageBox.left) * canvas.width / imageBox.width);
+        const x1 = Math.ceil((box.right - imageBox.left) * canvas.width / imageBox.width);
+        const y0 = Math.floor((box.top - imageBox.top) * canvas.height / imageBox.height);
+        const y1 = Math.ceil((box.bottom - imageBox.top) * canvas.height / imageBox.height);
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height || alpha[(y * canvas.width + x) * 4 + 3] > 16) overlap++;
+        }
+      }
+    }
+    return { text: note.textContent, inFlow: true, overlap };
+  }));
+  for (const check of checks) {
+    assert(check.inFlow, "Large-text and fallback notes must follow the artwork");
+    assert.equal(check.overlap, 0, `Corner copy covers real artwork: ${normalize(check.text)}`);
+  }
 }
 
 async function figureAndUnitCapture(page, required) {
@@ -120,7 +285,7 @@ async function figureAndUnitCapture(page, required) {
     });
   });
   assert(visible, "Required content does not fit the actual viewport: " + unit.id);
-  const relative = path.join(".cache", "hybrid-proof", required.id + ".png");
+  const relative = path.relative(root, path.join(proof, required.id + ".png"));
   const file = path.join(root, relative);
   await page.screenshot({ path: file });
   observation.captures.push({
@@ -148,37 +313,191 @@ async function pageUnits(page, route) {
   return actual;
 }
 
+async function reviewState(page, expected) {
+  await page.waitForFunction(index => {
+    const root = document.querySelector("[data-reader-stories]");
+    const card = root.querySelector("[aria-current='true']");
+    if (root.dataset.selectedIndex !== String(index) || !card) return false;
+    const a = card.getBoundingClientRect();
+    const b = root.querySelector("[data-carousel-viewport]").getBoundingClientRect();
+    return Math.abs(a.left + a.width / 2 - b.left - b.width / 2) < 1;
+  }, expected, { timeout: 5000 });
+}
+
+async function reviewSide(page, direction, touch = false) {
+  const viewport = page.locator("[data-carousel-viewport]");
+  await viewport.scrollIntoViewIfNeeded();
+  const box = await viewport.boundingBox();
+  const options = { position: { x: box.width * (direction > 0 ? .8 : .2), y: box.height - 28 } };
+  if (touch) await viewport.tap(options);
+  else await viewport.click(options);
+}
+
 async function carousel(page) {
   const root = page.locator("[data-reader-stories]");
-  assert.equal(await root.count(), 1);
-  const track = root.locator("[data-carousel-track]");
-  const current = async () => root.evaluate(node => ({
-    index: node.dataset.selectedIndex ?? node.dataset.index ?? node.dataset.current ?? null,
-    left: node.querySelector("[data-carousel-track]").scrollLeft,
-    transform: getComputedStyle(node.querySelector("[data-carousel-track]")).transform,
-    text: node.querySelector("[data-story-card][aria-current='true']")?.textContent.trim(),
-  }));
-  const before = await current();
-  await root.locator("[data-carousel-next]").click();
-  await page.waitForTimeout(450);
-  const after = await current();
-  assert.notDeepEqual(after, before, "Next story did not change");
-  await root.locator("[data-carousel-prev]").click();
-  await page.waitForTimeout(450);
-  const back = await current();
-  assert.notDeepEqual(back, after, "Previous story did not change");
+  const viewport = root.locator("[data-carousel-viewport]");
+  assert.equal(await root.locator(".reader-story__rating").count(), 3);
+  assert.equal(await root.getByRole("img", { name: "Demo rating: 5 out of 5. Reviewer rating not yet confirmed.", exact: true }).count(), 1);
+  assert.deepEqual((await root.locator(".reader-story__score").allTextContents()).map(normalize), ["5/5", "5/5", "5/5"]);
+  assert.deepEqual((await root.locator(".reader-story__rating-note").allTextContents()).map(normalize), ["Demo rating", "Demo rating", "Demo rating"]);
+  assert.equal(await root.locator(".reader-story__stamp, .reader-story__masthead, .reader-story__signature").count(), 0);
+  await viewport.scrollIntoViewIfNeeded();
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => document.querySelector("[data-reader-stories]").dataset.carouselState === "playing");
+  let index = Number(await root.getAttribute("data-selected-index"));
+  const automatic = (index + 1) % 3;
+  await page.waitForFunction(expected => document.querySelector("[data-reader-stories]").dataset.selectedIndex === String(expected), automatic, { timeout: 11000 });
+  await reviewState(page, automatic);
+  index = automatic;
+  assert.equal(await root.locator(".reader-stories__controls, .reader-stories__arrows, [data-carousel-position], [data-carousel-note]").count(), 0);
+  const levelCards = async () => assert(await root.locator("[data-story-card]").evaluateAll(cards => {
+    const centers = cards.map(card => {
+      const box = card.getBoundingClientRect();
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(card).transform);
+      return { y: box.y + box.height / 2, upright: Math.abs(matrix.b) < .00001 && Math.abs(matrix.c) < .00001 };
+    });
+    return centers.every(card => card.upright && Math.abs(card.y - centers[0].y) < .1);
+  }), "The review bubbles must remain upright and centered on a level plane");
+  await levelCards();
+  assert(await viewport.evaluate(node => {
+    const front = node.querySelector("[data-story-card][aria-current='true']");
+    const current = front.getBoundingClientRect();
+    const back = [...node.querySelectorAll("[data-story-card]:not([aria-current])")];
+    return back.every(card => Number(getComputedStyle(card).zIndex) < Number(getComputedStyle(front).zIndex)) &&
+      back.some(card => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.left < current.left - 24 && bounds.right > current.left;
+      }) && back.some(card => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.right > current.right + 24 && bounds.left < current.right;
+      });
+  }), "The actual review notes must form a visible layered fan, not a clipped strip");
+  for (let count = 0; count < 3; count++) {
+    await reviewSide(page, 1);
+    index = (index + 1) % 3;
+    await reviewState(page, index);
+  }
+  await reviewSide(page, -1);
+  index = (index + 2) % 3;
+  await reviewState(page, index);
+  const box = await viewport.boundingBox();
+  const draggedCard = root.locator("[data-story-card]").nth(index);
+  const beforeDrag = await draggedCard.boundingBox();
+  await page.mouse.move(box.x + box.width * .78, box.y + box.height - 28);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * .16, box.y + box.height - 28, { steps: 12 });
+  await page.waitForTimeout(50);
+  const duringDrag = await draggedCard.boundingBox();
+  await levelCards();
+  assert(Math.abs(duringDrag.x + duringDrag.width / 2 - beforeDrag.x - beforeDrag.width / 2) > box.width * .15, "The actual note must follow held input before release");
+  await page.screenshot({ path: path.join(proof, "review-during-drag.png") });
+  await page.mouse.up();
+  index = (index + 1) % 3;
+  await reviewState(page, index);
+  for (let count = 0; count < 3; count++) await reviewSide(page, 1);
+  await reviewState(page, index);
+  const quote = await root.locator("[aria-current='true'] blockquote p").boundingBox();
+  await page.mouse.move(quote.x + 8, quote.y + 22);
+  await page.mouse.down();
+  await page.mouse.move(quote.x + 130, quote.y + 22, { steps: 10 });
+  await page.mouse.up();
+  assert(await page.evaluate(() => getSelection().toString().length > 0), "Review text should remain selectable");
+  await reviewState(page, index);
+  await page.evaluate(() => getSelection().removeAllRanges());
+  await page.mouse.move(0, 0);
+  assert.equal(await root.getAttribute("data-carousel-state"), "paused");
+  await page.waitForTimeout(8300);
+  await reviewState(page, index);
+  await viewport.press("ArrowLeft");
+  index = (index + 2) % 3;
+  await reviewState(page, index);
+  await page.keyboard.press("Tab");
+  assert(await root.locator("[data-carousel-prev]").evaluate(node => document.activeElement === node));
+  await page.keyboard.press("Tab");
   const pause = root.locator("[data-carousel-pause]");
-  const label = await pause.innerText();
-  await pause.click();
-  assert.notEqual(await pause.innerText(), label);
-  assert(await track.isVisible());
+  assert(await pause.evaluate(node => document.activeElement === node));
+  const pauseBox = await pause.boundingBox();
+  assert(pauseBox.width > 40 && pauseBox.height >= 44, "Keyboard controls must become visible when focused");
+  const label = await pause.textContent();
+  await page.keyboard.press("Enter");
+  assert.notEqual(await pause.textContent(), label);
+  await page.keyboard.press("Enter");
+  assert.equal(await root.getAttribute("data-carousel-state"), "paused");
+  await reviewSide(page, 1);
+  index = (index + 1) % 3;
+  await reviewState(page, index);
+  assert(await root.locator(".reader-stories__key").evaluateAll(buttons => buttons.every(button => {
+    const box = button.getBoundingClientRect();
+    return box.width <= 1 && box.height <= 1;
+  })), "No visible buttons should remain in the pointer presentation");
   assert.equal(await root.locator("[data-story-card][aria-hidden='false']").count(), 1);
+  assert.equal(await root.locator("[data-story-card]").count(), 3);
   assert.deepEqual((await root.locator("blockquote").allTextContents()).map(normalize), [
     "So colorful and with amazing tips and information.",
     "Just finished reading READY TO EAT, it is very informative and good!",
     "We love your book",
   ]);
+  await page.screenshot({ path: path.join(proof, "review-natural-desktop.png") });
+  await page.evaluate(() => window.HappyMangoReaderStories.destroy(document.querySelector("[data-reader-stories]")));
+  assert.equal(await root.getAttribute("data-carousel-ready"), null);
+  assert(await root.locator("[data-story-card]").evaluateAll(cards => cards.every(card => !card.style.transform && !card.inert && !card.hasAttribute("aria-hidden"))));
+  await page.evaluate(() => {
+    const root = document.querySelector("[data-reader-stories]");
+    window.HappyMangoReaderStories.init(root);
+    window.HappyMangoReaderStories.init(root);
+  });
+  await reviewState(page, 0);
+  await reviewSide(page, 1);
+  await reviewState(page, 1);
+  assert.equal(await root.locator("[data-story-card]").count(), 3);
   return { next: true, previous: true, pause: true };
+}
+
+async function touchCarousel(page, context) {
+  const root = page.locator("[data-reader-stories]");
+  const viewport = root.locator("[data-carousel-viewport]");
+  await viewport.scrollIntoViewIfNeeded();
+  await reviewState(page, 0);
+  const touch = await context.newCDPSession(page);
+  const swipe = async (dx, dy) => {
+    const box = await viewport.boundingBox();
+    const start = { x: box.x + box.width * .72, y: box.y + box.height * .65 };
+    await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+    for (let step = 1; step <= 8; step++) {
+      await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: start.x + dx * step / 8, y: start.y + dy * step / 8 }] });
+      await page.waitForTimeout(25);
+    }
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
+  await swipe(-150, 0);
+  await reviewState(page, 1);
+  await reviewSide(page, -1, true);
+  await reviewState(page, 0);
+  await reviewSide(page, -1, true);
+  await reviewState(page, 2);
+  await reviewSide(page, 1, true);
+  await reviewState(page, 0);
+  const beforeScroll = await page.evaluate(() => scrollY);
+  await swipe(0, -140);
+  await page.waitForTimeout(300);
+  assert(await page.evaluate(() => scrollY) > beforeScroll, "Vertical swipes must scroll the document");
+  await reviewState(page, 0);
+  assert.equal(await root.getAttribute("data-carousel-state"), "reduced-motion");
+  await reviewSide(page, 1, true);
+  await reviewState(page, 1);
+  await page.setViewportSize({ width: 860, height: 1000 });
+  await reviewState(page, 1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await reviewState(page, 1);
+  await viewport.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(proof, "review-natural-mobile.png") });
+  await page.evaluate(() => document.documentElement.style.fontSize = "200%");
+  await reviewState(page, 1);
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Enlarged note text must not create document overflow");
+  await viewport.press("ArrowRight");
+  await reviewState(page, 2);
+  await page.screenshot({ path: path.join(proof, "review-large-text.png"), fullPage: true });
+  await touch.detach();
 }
 
 try {
@@ -227,25 +546,77 @@ try {
   assert.equal(await page.locator("[data-hero-book]").count(), 1);
   assert.equal(await page.locator("[data-reader-page]").count(), 4);
   assert.equal(await page.locator("[data-ideas-page]").count(), 1);
-  await page.locator("[data-book-toggle]").click();
+  assert.equal(await page.locator("[data-book-toggle]").count(), 0);
+  assert(await page.locator("[data-book-close]").isHidden());
+  assert.equal((await page.locator("[data-book-open]").textContent()).trim(), "");
+  await page.locator("[data-book-open]").click();
   await bookState(page, "open", 0);
-  await page.locator("[data-book-next]").click();
+  assert.equal(await page.locator(".hb-plate").evaluate(node => node.getAnimations().length), 0, "Reduced motion should not animate the plate");
+  assert(await page.locator("[data-reader-panel]").evaluate(node => document.activeElement === node));
+  await layout(page);
+  await cornerNotes(page);
+  assert.equal(normalize(await page.locator(".hb-pages .hb-corner-story").textContent()), "A story for them.");
+  assert.deepEqual((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze()).violations.map(item => item.id), []);
+  await turnOnPage(page, -1);
+  await bookState(page, "closed", 0);
+  assert(await page.locator("[data-book-open]").evaluate(node => document.activeElement === node));
+  await page.keyboard.press("Enter");
+  await bookState(page, "open", 0);
+  await turnOnPage(page, 1);
   await bookState(page, "open", 2);
+  await layout(page);
   const ideas = await page.locator('[data-reader-page="2"]').boundingBox();
   const photo = await page.locator('[data-reader-page="3"]').boundingBox();
   assert(ideas && photo && ideas.x < photo.x, "Ideas must face the reader photo from the left");
   assert(await page.locator(`[data-reader-page="3"] ${hasDemoPhotos ? "[data-local-demo-image]" : ".photo-placeholder"}`).first().isVisible());
   await page.screenshot({ path: path.join(proof, "desktop-ideas-photo.png"), fullPage: true });
-  await page.locator("[data-book-toggle]").click();
-  await bookState(page, "closed");
-  await page.locator("[data-book-toggle]").click();
-  await bookState(page, "open", 2);
-  assert.equal(await page.locator("[data-book-thumb]").count(), 4);
-  await page.locator('[data-book-thumb="0"]').click();
+  await turnOnPage(page, 1);
+  await bookState(page, "closed", 2);
+  assert(await page.locator("[data-book-open]").evaluate(node => document.activeElement === node));
+  await page.keyboard.press("Enter");
   await bookState(page, "open", 0);
-  await page.locator('[data-book-thumb="1"]').click();
-  await bookState(page, "open", 1);
-  assert.equal(await page.locator('[data-book-thumb="1"]').getAttribute("aria-current"), "page");
+  const statusBox = await page.locator("[data-book-status]").boundingBox();
+  assert(statusBox.width <= 1 && statusBox.height <= 1, "Page status should not occupy visible space");
+  assert.equal(await page.locator("[data-book-status]").getAttribute("aria-live"), "polite");
+  await page.keyboard.press("ArrowRight");
+  await bookState(page, "open", 2);
+  await page.keyboard.press("Tab");
+  assert(await page.locator("[data-book-prev]").evaluate(node => document.activeElement === node));
+  const keyboardControl = await page.locator("[data-book-prev]").boundingBox();
+  assert(keyboardControl.width > 40 && keyboardControl.height >= 44, "Keyboard focus must reveal its control");
+  await page.keyboard.press("Enter");
+  await bookState(page, "open", 0);
+  await page.keyboard.press("Escape");
+  await bookState(page, "closed");
+  await page.keyboard.press("Space");
+  await bookState(page, "open", 0);
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  assert(await page.locator("[data-book-close]").evaluate(node => document.activeElement === node));
+  await page.keyboard.press("Enter");
+  await bookState(page, "closed");
+  await page.keyboard.press("Enter");
+  await bookState(page, "open", 0);
+  const selectedPage = page.locator('[data-reader-page="1"]');
+  await selectedPage.evaluate(node => {
+    const range = document.createRange();
+    range.selectNodeContents(node.querySelector(".hb-corner-note"));
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    node.click();
+  });
+  await bookState(page, "open", 0);
+  await page.evaluate(() => getSelection().removeAllRanges());
+  const drag = await selectedPage.boundingBox();
+  await page.mouse.move(drag.x + 80, drag.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(drag.x + 80, drag.y + 175, { steps: 8 });
+  await page.mouse.up();
+  await bookState(page, "open", 0);
+  await page.locator(".hero-introduction").click();
+  await bookState(page, "closed", 0);
+  await page.locator("[data-book-open]").click();
+  await bookState(page, "open", 0);
   observation.interactions.push({ id: "hero-read", actual: { singleHero: true, opened: true, turned: true, ideasLeft: true, photoRight: true, reopened: true } });
   await page.getByRole("link", { name: "About", exact: true }).click();
   assert(new URL(page.url()).pathname.endsWith("/about/"));
@@ -276,23 +647,121 @@ try {
   watch(storiesPage);
   await storiesPage.goto(target);
   await settled(storiesPage);
+  const cue = storiesPage.locator(".hb-cover-cue");
+  const firstCue = await cue.evaluate(node => getComputedStyle(node).transform);
+  await storiesPage.waitForTimeout(1300);
+  assert.notEqual(await cue.evaluate(node => getComputedStyle(node).transform), firstCue, "The cover opening cue is static");
+  const coverBox = await storiesPage.locator("[data-book-open]").boundingBox();
+  const closedPlateWidth = await storiesPage.locator(".hb-plate").evaluate(node => parseFloat(getComputedStyle(node).width));
+  await storiesPage.mouse.click(coverBox.x + coverBox.width / 2, coverBox.y + coverBox.height / 2);
+  await plateOpeningMotion(storiesPage, closedPlateWidth);
+  await bookState(storiesPage, "open", 0);
+  assert.equal(await storiesPage.locator(".hb-plate").evaluate(node => node.getAnimations().length), 0, "The plate flourish must finish with the opening hinge");
+  await turnOnPage(storiesPage, 1);
+  await storiesPage.waitForFunction(() => {
+    const leaf = document.querySelector("[data-page-turn]");
+    return !leaf.hidden && getComputedStyle(leaf).transform.startsWith("matrix3d(");
+  });
+  assert.equal(await storiesPage.locator(".hb-plate").evaluate(node => node.getAnimations().length), 0, "Ordinary page turns must not replay the plate flourish");
+  await storiesPage.waitForTimeout(400);
+  await storiesPage.screenshot({ path: path.join(proof, "direct-page-turn.png") });
+  await turnOnPage(storiesPage, -1);
+  await bookState(storiesPage, "open", 0);
+  await turnOnPage(storiesPage, 1);
+  await bookState(storiesPage, "open", 2);
+  await closeOnPlate(storiesPage);
+  await bookState(storiesPage, "closed");
+  assert(await storiesPage.locator("[data-book-open]").evaluate(node => document.activeElement === node));
+  await storiesPage.keyboard.press("Enter");
+  await storiesPage.waitForFunction(() => document.querySelector("[data-hero-book]").dataset.state === "opening");
+  await storiesPage.locator("[data-reader-panel]").press("ArrowRight");
+  await bookState(storiesPage, "open", 0);
+  await turnOnPage(storiesPage, 1);
+  await bookState(storiesPage, "open", 2);
+  await turnOnPage(storiesPage, -1);
+  await storiesPage.waitForFunction(() => !document.querySelector("[data-page-turn]").hidden);
+  await storiesPage.waitForTimeout(150);
+  await storiesPage.locator(".hero-introduction").click();
+  await storiesPage.locator(".hb-cover-back > .hb-copy").waitFor({ state: "attached" });
+  assert.equal(await storiesPage.locator(".hb-cover-back > .hb-ideas").count(), 1, "Closing during a turn must use the last readable spread");
+  await bookState(storiesPage, "closed");
+  assert.equal(await storiesPage.locator("[data-hero-book]").getAttribute("data-page"), "2");
+  await storiesPage.locator("[data-book-open]").focus();
+  await storiesPage.keyboard.press("Enter");
+  await storiesPage.locator(".hb-cover-back > .hb-sample-left").waitFor({ state: "attached" });
+  await storiesPage.locator(".hero-introduction").click();
+  await bookState(storiesPage, "closed");
+  assert.equal(await storiesPage.locator(".hb-copy").count(), 0, "Outside dismissal during opening must clear transitional copies");
+  assert.equal(await storiesPage.locator(".hb-plate").evaluate(node => node.getAnimations().length), 0, "Interrupted opening must not leave the plate animation running");
+  assert(Math.abs(await storiesPage.locator(".hb-plate").evaluate(node => parseFloat(getComputedStyle(node).width)) - closedPlateWidth) < 1);
+  report.cases.push({ case: "cover-invitation-and-direct-turn-reversal", status: "passed" });
   observation.interactions.push({ id: "reader-carousel", actual: await carousel(storiesPage) });
+  await storiesPage.locator("[data-book-open]").focus();
+  await storiesPage.keyboard.press("Enter");
+  await bookState(storiesPage, "open", 0);
+  const reviewIndex = Number(await storiesPage.locator("[data-reader-stories]").getAttribute("data-selected-index"));
+  await reviewSide(storiesPage, 1);
+  await reviewState(storiesPage, (reviewIndex + 1) % 3);
+  await bookState(storiesPage, "closed", 0);
+  assert(await storiesPage.locator("[data-carousel-viewport]").evaluate(node => document.activeElement === node), "Closing the book must not steal focus from an outside control");
+  report.cases.push({ case: "first-page-reopen-and-document-click-away", status: "passed" });
   await storiesContext.close();
+
+  const touchStories = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", hasTouch: true });
+  const touchStoriesPage = await touchStories.newPage();
+  watch(touchStoriesPage);
+  await touchStoriesPage.goto(target);
+  await settled(touchStoriesPage);
+  await touchCarousel(touchStoriesPage, touchStories);
+  await touchStories.close();
 
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", hasTouch: true });
   const phone = await mobile.newPage();
   watch(phone);
   await phone.goto(target);
   await settled(phone);
-  await phone.locator("[data-book-toggle]").tap();
+  await phone.locator("[data-book-open]").tap();
   await bookState(phone, "open", 0);
   assert.equal(await phone.locator("[data-hero-book]").getAttribute("data-layout"), "single");
+  await cornerNotes(phone);
+  await turnOnPage(phone, -1, true);
+  await bookState(phone, "closed", 0);
+  await phone.locator("[data-book-open]").tap();
+  await bookState(phone, "open", 0);
+  const touch = await mobile.newCDPSession(phone);
+  const touchBox = await phone.locator('[data-reader-page="0"]').boundingBox();
+  const scrollBefore = await phone.evaluate(() => scrollY);
+  const touchStart = { x: touchBox.x + touchBox.width * .75, y: touchBox.y + touchBox.height * .7 };
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [touchStart] });
+  for (let step = 1; step <= 6; step++) {
+    await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: touchStart.x, y: touchStart.y - step * 20 }] });
+    await phone.waitForTimeout(25);
+  }
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await phone.waitForTimeout(250);
+  assert(await phone.evaluate(() => scrollY) > scrollBefore, "Touch dragging should scroll the page");
+  await bookState(phone, "open", 0);
+  await touch.detach();
   const order = [0];
   for (const index of [1, 2, 3]) {
-    await phone.locator("[data-book-next]").tap();
+    await turnOnPage(phone, 1, true);
     await bookState(phone, "open", index);
+    await layout(phone);
+    await cornerNotes(phone);
     order.push(Number(await phone.locator("[data-hero-book]").getAttribute("data-page")));
     assert((await phone.locator("[data-reader-panel]").boundingBox()).y >= -1, "The newly selected page is above the readable viewport");
+  }
+  await turnOnPage(phone, 1, true);
+  await bookState(phone, "closed", 3);
+  await phone.locator("[data-book-open]").tap();
+  await bookState(phone, "open", 0);
+  await phone.locator(".hero-introduction").tap();
+  await bookState(phone, "closed", 0);
+  await phone.locator("[data-book-open]").tap();
+  await bookState(phone, "open", 0);
+  for (const index of [1, 2, 3]) {
+    await turnOnPage(phone, 1, true);
+    await bookState(phone, "open", index);
   }
   await phone.setViewportSize({ width: 1440, height: 1000 });
   await phone.waitForTimeout(250);
@@ -303,7 +772,33 @@ try {
   await phone.evaluate(() => document.documentElement.style.fontSize = "200%");
   await layout(phone);
   await phone.screenshot({ path: path.join(proof, "large-text.png"), fullPage: true });
+  for (const index of [2, 1, 0]) {
+    await phone.locator("[data-reader-panel]").press("ArrowLeft");
+    await bookState(phone, "open", index);
+    await layout(phone);
+    await cornerNotes(phone);
+  }
+  await phone.screenshot({ path: path.join(proof, "large-text-sample-note.png"), fullPage: true });
   await mobile.close();
+
+  const alignment = [];
+  for (const width of [1440, 390]) {
+    const context = await browser.newContext({ viewport: { width, height: width === 1440 ? 1000 : 844 }, reducedMotion: "no-preference" });
+    const alignmentPage = await context.newPage();
+    watch(alignmentPage);
+    await alignmentPage.goto(target);
+    await settled(alignmentPage);
+    const cover = await alignmentPage.locator("[data-book-open]").boundingBox();
+    await alignmentPage.mouse.click(cover.x + cover.width / 2, cover.y + cover.height / 2);
+    await bookState(alignmentPage, "open", 0);
+    alignment.push(...await bookImageAlignment(alignmentPage));
+    await alignmentPage.locator("[data-reader-panel]").press("ArrowLeft");
+    await bookState(alignmentPage, "closed", 0);
+    assert(await alignmentPage.locator("[data-book-open]").evaluate(node => document.activeElement === node));
+    await context.close();
+  }
+  await fs.writeFile(path.join(proof, "book-image-alignment.json"), JSON.stringify(alignment, null, 2) + "\n");
+  report.cases.push({ case: "aligned-animated-page-handoffs-and-stable-book-height", status: "passed" });
 
   const narrow = await browser.newContext({ viewport: { width: 320, height: 760 }, reducedMotion: "reduce" });
   const narrowPage = await narrow.newPage();
@@ -313,10 +808,13 @@ try {
     await settled(narrowPage);
     await layout(narrowPage);
     if (!route) {
-      await narrowPage.locator("[data-book-toggle]").click();
+      await narrowPage.locator("[data-book-open]").click();
       await bookState(narrowPage, "open", 0);
-      await narrowPage.locator("[data-book-next]").click();
-      await narrowPage.locator("[data-book-next]").click();
+      await cornerNotes(narrowPage);
+      await turnOnPage(narrowPage, 1);
+      await bookState(narrowPage, "open", 1);
+      await cornerNotes(narrowPage);
+      await turnOnPage(narrowPage, 1);
       await bookState(narrowPage, "open", 2);
       await narrowPage.evaluate(() => document.documentElement.style.fontSize = "200%");
       await layout(narrowPage);
@@ -332,11 +830,57 @@ try {
   await layout(noPage);
   assert(await noPage.locator('[data-reader-page="0"]').isVisible());
   assert(await noPage.locator('[data-reader-page="2"]').isVisible());
+  assert(await noPage.locator("[data-book-open]").isHidden());
+  assert.equal(await noPage.locator("[data-carousel-ready]").count(), 0);
+  assert.equal(await noPage.locator("[data-story-card]:visible").count(), 3);
+  await cornerNotes(noPage);
   await noPage.goto(new URL("contact/", target).href);
   await noPage.getByRole("textbox", { name: "Your name", exact: true }).fill("Sample Reader");
   await noPage.getByRole("textbox", { name: "Your name", exact: true }).press("Enter");
   assert(await noPage.locator("[data-send-inquiry]").isDisabled());
   await noJs.close();
+
+  const missingCarousel = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  await missingCarousel.route("**/assets/js/vendor/embla-carousel-8.6.0.umd.js", route => route.abort());
+  const fallbackReviews = await missingCarousel.newPage();
+  await fallbackReviews.goto(target);
+  await settled(fallbackReviews);
+  assert.equal(await fallbackReviews.locator("[data-carousel-ready]").count(), 0);
+  assert.equal(await fallbackReviews.locator("[data-story-card]:visible").count(), 3);
+  await missingCarousel.close();
+
+  const failedImages = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  await failedImages.route("**/assets/images/sample-left*.webp", route => route.abort());
+  const errorPage = await failedImages.newPage();
+  await errorPage.goto(target);
+  await errorPage.locator("[data-book-open]").click();
+  await bookState(errorPage, "error");
+  const errorBox = await errorPage.locator("[data-book-status]").boundingBox();
+  assert(errorBox.width > 1 && errorBox.height > 1, "Actual image-load errors must remain readable");
+  assert(await errorPage.locator("[data-book-retry]").isVisible());
+  assert(await errorPage.locator("[data-book-open]").isEnabled());
+  await failedImages.unroute("**/assets/images/sample-left*.webp");
+  await errorPage.locator("[data-book-retry]").click();
+  await bookState(errorPage, "open", 0);
+  assert(await errorPage.locator("[data-reader-panel]").evaluate(node => document.activeElement === node));
+  assert(await errorPage.locator("[data-book-retry]").isHidden());
+  await failedImages.close();
+
+  if (hasDemoPhotos) {
+    const failedFuture = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+    await failedFuture.route("**/__demo__/reader-cover.webp", route => route.abort());
+    const futurePage = await failedFuture.newPage();
+    await futurePage.goto(target);
+    await futurePage.locator("[data-book-open]").click();
+    await bookState(futurePage, "open", 0);
+    await turnOnPage(futurePage, 1);
+    await bookState(futurePage, "error", 0);
+    assert(await futurePage.locator('[data-reader-page="0"]').isVisible(), "A failed later image must not remove the last readable spread");
+    await failedFuture.unroute("**/__demo__/reader-cover.webp");
+    await futurePage.locator("[data-book-retry]").click();
+    await bookState(futurePage, "open", 2);
+    await failedFuture.close();
+  }
   assert.deepEqual(requests.external, []);
   assert.deepEqual(requests.post, []);
   assert.deepEqual(errors, []);

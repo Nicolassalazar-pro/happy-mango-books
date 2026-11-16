@@ -12,14 +12,15 @@
       this.root = root;
       this.pages = [...root.querySelectorAll("[data-reader-page]")];
       this.panel = root.querySelector("[data-reader-panel]");
-      this.toggle = root.querySelector("[data-book-toggle]");
+      this.openButton = root.querySelector("[data-book-open]");
+      this.closeButton = root.querySelector("[data-book-close]");
+      this.keyboardControls = root.querySelector(".hb-access");
       this.prev = root.querySelector("[data-book-prev]");
       this.next = root.querySelector("[data-book-next]");
-      this.thumbnails = root.querySelector("[data-book-thumbnails]");
-      this.thumbButtons = [...root.querySelectorAll("[data-book-thumb]")];
       this.retry = root.querySelector("[data-book-retry]");
       this.status = root.querySelector("[data-book-status]");
       this.cover = root.querySelector(".hb-cover");
+      this.coverCue = root.querySelector(".hb-cover-cue");
       this.coverArt = this.cover.querySelector("img");
       this.coverBack = root.querySelector(".hb-cover-back");
       this.leaf = root.querySelector("[data-page-turn]");
@@ -29,6 +30,8 @@
       this.measure = root.querySelector(".hb-measure");
       this.layoutNode = root.querySelector(".hb-layout");
       this.object = root.querySelector(".hb-object");
+      this.plate = root.querySelector(".hb-plate");
+      this.foods = root.querySelector(".hb-foods");
       this.casts = [...root.querySelectorAll(".hb-cast")];
       this.life = new AbortController();
       this.motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
@@ -65,22 +68,21 @@
         this.ready = true;
         this.paint();
         const options = { signal: this.life.signal };
-        this.toggle.addEventListener("click", () => this.intent(!this.desiredOpen, this.requested), options);
+        this.openButton.addEventListener("click", () => this.intent(true, 0), options);
+        this.closeButton.addEventListener("click", () => this.close(), options);
         this.prev.addEventListener("click", () => this.step(-1), options);
         this.next.addEventListener("click", () => this.step(1), options);
-        this.thumbButtons.forEach(button => {
-          button.addEventListener("click", () => this.intent(true, Number(button.dataset.bookThumb)), options);
-        });
         this.retry.addEventListener("click", () => {
           if (this.failedIntent) this.intent(this.failedIntent.open, this.failedIntent.page, true);
         }, options);
-        this.cover.addEventListener("click", () => {
-          if (!this.desiredOpen) this.intent(true, this.requested);
-        }, options);
+        this.listenBookInteractions(options);
         this.root.addEventListener("keydown", event => {
           if (!this.desiredOpen || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
               event.target.closest("input, textarea, select, [contenteditable='true']")) return;
-          if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            this.close();
+          } else if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
             event.preventDefault();
             this.step(event.key === "ArrowRight" ? 1 : -1);
           }
@@ -139,10 +141,61 @@
       if (!this.disposed) this.root.dataset.motion = !this.reduced && !document.hidden && this.inView ? "running" : "paused";
     }
 
+    listenBookInteractions(options) {
+      document.addEventListener("pointerdown", event => {
+        if (!this.desiredOpen) {
+          this.pageGesture = null;
+          return;
+        }
+        if (!event.isPrimary) {
+          if (this.pageGesture) this.pageGesture.cancelled = true;
+          return;
+        }
+        this.pageGesture = event.button === 0
+          ? { id: event.pointerId, x: event.clientX, y: event.clientY, cancelled: false } : null;
+      }, options);
+      document.addEventListener("pointermove", event => {
+        const gesture = this.pageGesture;
+        if (gesture?.id === event.pointerId && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 10) {
+          gesture.cancelled = true;
+        }
+      }, options);
+      document.addEventListener("pointercancel", event => {
+        if (this.pageGesture?.id === event.pointerId) this.pageGesture.cancelled = true;
+      }, options);
+      document.addEventListener("click", event => {
+        const gesture = this.pageGesture;
+        this.pageGesture = null;
+        if (!this.desiredOpen || event.button !== 0 || event.detail > 0 && gesture?.cancelled) return;
+        if (!this.object.contains(event.target)) {
+          if (!this.keyboardControls.contains(event.target) && !this.retry.contains(event.target)) {
+            if (this.root.contains(event.target)) this.panel.focus({ preventScroll: true });
+            this.close();
+          }
+          return;
+        }
+        const page = event.target.closest("[data-reader-page]");
+        if (!this.committedOpen || !this.desiredOpen || this.active?.kind === "hinge" ||
+            !this.pages.includes(page) || page.hidden ||
+            event.target.closest("a, button, input, textarea, select, [contenteditable='true']") ||
+            !getSelection()?.isCollapsed) return;
+        const bounds = page.getBoundingClientRect();
+        const direction = this.layout === "spread" ? this.pages.indexOf(page) % 2 ? 1 : -1
+          : event.clientX < bounds.left + bounds.width / 2 ? -1 : 1;
+        this.panel.focus({ preventScroll: true });
+        this.step(direction);
+      }, options);
+    }
+
     step(direction) {
-      if (!this.desiredOpen) return;
+      if (!this.desiredOpen || !this.committedOpen) return;
       const target = this.requestedLayout === "spread" ? pair(this.requested) + direction * 2 : this.requested + direction;
       if (target >= 0 && target <= 3) this.intent(true, target);
+      else if (!this.active && !this.work) this.close();
+    }
+
+    close() {
+      if (this.desiredOpen) this.intent(false, this.committedOpen ? this.displayed : this.requested);
     }
 
     intent(open, page, retry = false) {
@@ -194,6 +247,7 @@
       this.back.replaceChildren();
       this.underlay.replaceChildren();
       this.coverBack.replaceChildren();
+      this.coverCue.style.removeProperty("transform");
       this.measure.replaceChildren();
       this.underlay.classList.remove("hb-on-left");
       this.leaf.hidden = true;
@@ -201,24 +255,37 @@
     }
 
     hideRetry() {
-      if (document.activeElement === this.retry) (this.committedOpen ? this.panel : this.toggle).focus({ preventScroll: true });
+      if (document.activeElement === this.retry) (this.committedOpen ? this.panel : this.openButton).focus({ preventScroll: true });
       this.retry.hidden = true;
     }
 
-    controls() {
-      this.toggle.textContent = this.desiredOpen ? "Close the book" : "Open the book";
-      this.toggle.setAttribute("aria-expanded", String(this.committedOpen || this.active?.kind === "hinge" && this.desiredOpen));
+    controls(focused = document.activeElement) {
+      const coverHidden = this.root.dataset.presentation === "open";
+      const closed = !coverHidden && !this.desiredOpen;
+      if (!coverHidden) {
+        this.cover.inert = false;
+        this.openButton.disabled = false;
+      }
+      if (coverHidden && this.cover.contains(focused)) {
+        this.panel.focus({ preventScroll: true });
+        if (this.revealTarget === focused) this.revealTarget = this.panel;
+      } else if (closed && (focused === this.panel || this.keyboardControls.contains(focused))) {
+        this.openButton.focus({ preventScroll: true });
+      }
+      this.openButton.disabled = coverHidden;
+      this.openButton.setAttribute("aria-expanded", String(this.committedOpen || this.active?.kind === "hinge" && this.desiredOpen));
+      this.cover.inert = coverHidden;
+      this.cover.setAttribute("aria-hidden", String(coverHidden));
+      this.keyboardControls.hidden = closed;
       const group = this.requestedLayout === "spread" ? pair(this.requested) : this.requested;
-      this.prev.setAttribute("aria-disabled", String(!this.desiredOpen || group === 0));
-      this.next.setAttribute("aria-disabled", String(!this.desiredOpen || group >= (this.requestedLayout === "spread" ? 2 : 3)));
-      this.prev.setAttribute("aria-label", this.requestedLayout === "spread" ? "Previous preview spread" : "Previous preview page");
-      this.next.setAttribute("aria-label", this.requestedLayout === "spread" ? "Next preview spread" : "Next preview page");
-      const closed = this.root.dataset.presentation === "closed";
-      this.thumbnails.hidden = closed;
-      this.thumbButtons.forEach(button => {
-        button.setAttribute("aria-current", !closed && Number(button.dataset.bookThumb) === this.displayed ? "page" : "false");
-      });
-      if (closed && (document.activeElement === this.prev || document.activeElement === this.next || document.activeElement === this.panel)) this.toggle.focus({ preventScroll: true });
+      const first = group === 0;
+      const last = group >= (this.requestedLayout === "spread" ? 2 : 3);
+      this.prev.setAttribute("aria-disabled", String(!this.desiredOpen));
+      this.next.setAttribute("aria-disabled", String(!this.desiredOpen));
+      this.prev.setAttribute("aria-label", first ? "Close the book at the beginning" : this.requestedLayout === "spread" ? "Previous preview spread" : "Previous preview page");
+      this.next.setAttribute("aria-label", last ? "Close the book at the end" : this.requestedLayout === "spread" ? "Next preview spread" : "Next preview page");
+      this.prev.textContent = first ? "Close book" : "Previous page";
+      this.next.textContent = last ? "Close book" : "Next page";
       this.prev.inert = this.next.inert = closed;
       this.panel.tabIndex = closed ? -1 : 0;
       this.panel.setAttribute("aria-busy", String(Boolean(this.work || this.active)));
@@ -244,6 +311,7 @@
 
     paint(height = this.openHeight) {
       if (this.disposed) return;
+      const focused = document.activeElement;
       this.root.dataset.textReflow = String(parseFloat(getComputedStyle(document.documentElement).fontSize) > 20);
       this.root.dataset.layout = this.layout;
       this.root.dataset.page = String(this.displayed);
@@ -259,7 +327,6 @@
         if (index === this.displayed && this.committedOpen) page.setAttribute("aria-current", "page");
         else page.removeAttribute("aria-current");
       });
-      this.cover.setAttribute("aria-hidden", String(this.committedOpen));
       this.cover.style.transform = this.committedOpen ? "translateZ(-3px) rotateY(-180deg)" : "translateZ(7px) rotateY(0deg)";
       this.layoutNode.style.transform = this.committedOpen && this.layout === "spread" ? `translateX(${this.width(this.layout) / 2}px)` : "translateX(0px)";
       this.object.style.transform = this.committedOpen ? "rotateX(0deg) rotateY(0deg)" : "rotateX(4deg) rotateY(-7deg)";
@@ -268,7 +335,7 @@
         ? this.layout === "spread" ? pair(this.displayed) === 0 ? "Book samples · Preview pages 1–2 of 4" : "Website ideas & reader moments · Preview pages 3–4 of 4"
           : `${titles[this.displayed]} · Preview page ${this.displayed + 1} of 4`
         : "Open a little world of first foods.";
-      this.controls();
+      this.controls(focused);
     }
 
     copy(index, layout, width) {
@@ -356,6 +423,8 @@
         this.revealSelection();
         return;
       }
+      const closedCue = oldOpen ? "none" : getComputedStyle(this.coverCue).transform;
+      this.coverCue.style.transform = closedCue;
       this.root.dataset.state = oldOpen ? open ? "turning" : "closing" : "opening";
       this.status.textContent = "Preparing your preview…";
       this.controls();
@@ -368,8 +437,8 @@
           else needed.add(from);
         }
         const copies = new Map();
-        this.measure.style.width = `${Math.max(0, width - 2)}px`;
-        for (const index of needed) {
+        this.measure.style.width = `${width}px`;
+        for (let index = 0; index < this.pages.length; index++) {
           const copy = this.copy(index, layout, width);
           copies.set(index, copy);
           this.measure.append(copy);
@@ -380,12 +449,13 @@
             if (image.srcset) image.sizes = `${Math.ceil(width)}px`;
             images.push(image);
           }
+          images.push(...copies.get(index).querySelectorAll("img"));
         }
-        images.push(...this.measure.querySelectorAll("img"));
         if (!open) images.push(this.coverArt);
         await Promise.all(images.map(image => this.decodeImage(image, controller.signal, retry)));
         if (this.disposed || revision !== this.revision || controller.signal.aborted) return;
-        let height = Math.max(width * 825 / 840, ...destination.map(id => copies.get(id).getBoundingClientRect().height + 2));
+        // Every leaf shares the same measured page box; unused media need not decode.
+        let height = Math.max(width * 825 / 840, ...[...copies.values()].map(copy => copy.getBoundingClientRect().height));
         height = Math.ceil(height);
         const transitionHeight = oldOpen && open && oldLayout === layout ? Math.max(height, this.openHeight || 0) : height;
         const reflow = this.root.dataset.textReflow === "true";
@@ -403,7 +473,7 @@
         }
         const active = {
           kind: oldOpen === open ? "turn" : "hinge", from, to: target, layout, height,
-          sourceHeight: this.openHeight, sourceOpen: oldOpen, target: open ? 1 : 0, animations: [],
+          sourceHeight: this.openHeight, sourceOpen: oldOpen, target: open ? 1 : 0, animations: [], closedCue,
           closedAmbient: oldOpen ? "translate3d(-3px, 7px, 0) rotate(-2.9deg)" : getComputedStyle(this.root.querySelector("[data-book-ambient]")).transform,
         };
         this.layout = layout;
@@ -433,7 +503,6 @@
           this.pages.forEach(page => { page.hidden = true; page.inert = true; });
           this.root.dataset.rest = "transition";
           this.root.dataset.presentation = "open";
-          this.cover.setAttribute("aria-hidden", "true");
         }
         this.measure.replaceChildren();
         this.work = null;
@@ -485,6 +554,7 @@
         ]));
       } else {
         add(this.cover, [{ transform: "translateZ(7px) rotateY(0deg)" }, { transform: "translateZ(-3px) rotateY(-180deg)" }]);
+        add(this.coverCue, [{ transform: active.closedCue }, { transform: "none" }]);
         add(this.layoutNode, [{ transform: "translateX(0px)" }, { transform: `translateX(${active.layout === "spread" ? this.width(active.layout) / 2 : 0}px)` }]);
         add(this.object, [{ transform: "rotateX(4deg) rotateY(-7deg)" }, { transform: "rotateX(0deg) rotateY(0deg)" }]);
         add(this.root.querySelector("[data-book-ambient]"), [{ transform: active.closedAmbient }, { transform: "none" }]);
@@ -492,6 +562,31 @@
           add(this.layoutNode, [{ height: `${this.width(active.layout) * 825 / 840}px` }, { height: `${active.height}px` }]);
         }
         add(this.root.querySelector(".hb-cover-light"), [{ opacity: 0 }, { opacity: .6, offset: .48 }, { opacity: 0 }]);
+        const material = getComputedStyle(this.root);
+        const closedWidth = material.getPropertyValue("--hb-plate-closed-width").trim();
+        const openWidth = material.getPropertyValue("--hb-plate-open-width").trim();
+        const angle = parseFloat(material.getPropertyValue("--hb-plate-angle"));
+        const wobble = active.layout === "single" ? .9 : 2.1;
+        const widths = [
+          { width: closedWidth, offset: 0, easing: "ease-in-out" },
+          { width: closedWidth, offset: .14, easing: "cubic-bezier(.16,.8,.24,1)" },
+          { width: openWidth, offset: .63, easing: "ease-in-out" },
+          { width: openWidth, offset: .82, easing: "ease-out" },
+          { width: openWidth, offset: 1 },
+        ];
+        const poses = [
+          [angle, 1, 1],
+          [angle - wobble * .6, .975, 1.012],
+          [angle + wobble, 1.025, .985],
+          [angle - wobble * .35, .995, 1.012],
+          [angle, 1, 1],
+        ];
+        // Share the hinge lifecycle so click-away reversal cannot leave the plate behind.
+        add(this.plate, widths.map((frame, index) => {
+          const [rotation, x, y] = poses[index];
+          return { ...frame, transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${x}, ${y})` };
+        }), "linear");
+        add(this.foods, widths, "linear");
       }
       this.root.dataset.state = active.kind === "turn" ? "turning" : active.target ? "opening" : "closing";
       this.status.textContent = active.kind === "turn" ? "Turning to your selected preview…" : active.target ? "Opening the book…" : "Closing the book…";
@@ -532,7 +627,6 @@
       this.root.classList.remove("hb-enhanced");
       ["presentation", "rest", "motion", "textReflow"].forEach(key => { delete this.root.dataset[key]; });
       this.root.dataset.state = "closed";
-      this.thumbnails.hidden = true;
       this.root.style.removeProperty("--hb-width");
       this.root.style.removeProperty("--hb-height");
       this.pages.forEach(page => {
@@ -544,6 +638,9 @@
       });
       [this.cover, this.layoutNode, this.object].forEach(node => node.style.removeProperty("transform"));
       this.cover.removeAttribute("aria-hidden");
+      this.cover.inert = false;
+      this.openButton.disabled = false;
+      this.keyboardControls.hidden = true;
       this.panel.tabIndex = -1;
       this.panel.removeAttribute("aria-busy");
       this.status.textContent = "Four website preview pages: two book samples, ideas and reader moments.";
