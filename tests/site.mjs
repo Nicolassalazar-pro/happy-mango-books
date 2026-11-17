@@ -14,8 +14,8 @@ const { default: AxeBuilder } = await import("@axe-core/playwright");
 const proof = path.resolve(root, process.env.HMB_PROOF_DIR || path.join(".cache", "hybrid-proof"));
 assert(path.relative(root, proof).startsWith(".cache" + path.sep), "Proof output must stay in the private project cache");
 const requirements = JSON.parse(await fs.readFile(path.join(root, "tests", "requirements.json"), "utf8"));
-const readerPhotos = ["reader-cover.webp", "reader-open.webp"];
-assert(readerPhotos.every(file => existsSync(path.join(root, "site", "assets", "images", file))), "Approved reader-photo assets are missing");
+const websitePhotos = ["reader-cover.webp", "reader-open.webp", "about-first-foods.webp"];
+assert(websitePhotos.every(file => existsSync(path.join(root, "site", "assets", "images", file))), "Selected website-photo assets are missing");
 const { units, specification } = requirements;
 const base = specification.baseUrl;
 const sha = body => crypto.createHash("sha256").update(body).digest("hex");
@@ -317,8 +317,9 @@ async function cornerNotes(page) {
 async function figureAndUnitCapture(page, required) {
   const unit = units.find(item => item.id === required.visibleUnitIds[0]);
   const node = page.locator(`[data-unit-id="${unit.id}"]`);
-  await node.scrollIntoViewIfNeeded();
-  await page.evaluate(() => window.scrollBy({ top: -24, behavior: "instant" }));
+  await node.evaluate(element => window.scrollTo({
+    top: Math.max(0, element.getBoundingClientRect().top + scrollY - 24), behavior: "instant",
+  }));
   const visible = await node.evaluate(element => {
     const nodes = element.querySelectorAll(".unit-heading,.unit-paragraph,.unit-qualification");
     return [...nodes].every(child => {
@@ -375,13 +376,20 @@ async function reviewSide(page, direction, touch = false) {
   else await viewport.click(options);
 }
 
+async function reviewCenter(page, touch = false) {
+  const viewport = page.locator("[data-carousel-viewport]");
+  await viewport.scrollIntoViewIfNeeded();
+  const box = await viewport.boundingBox();
+  const options = { position: { x: box.width / 2, y: box.height - 28 } };
+  if (touch) await viewport.tap(options);
+  else await viewport.click(options);
+}
+
 async function carousel(page) {
   const root = page.locator("[data-reader-stories]");
   const viewport = root.locator("[data-carousel-viewport]");
-  assert.equal(await root.locator(".reader-story__rating").count(), 3);
-  assert.equal(await root.getByRole("img", { name: "Demo rating: 5 out of 5. Reviewer rating not yet confirmed.", exact: true }).count(), 1);
-  assert.deepEqual((await root.locator(".reader-story__score").allTextContents()).map(normalize), ["5/5", "5/5", "5/5"]);
-  assert.deepEqual((await root.locator(".reader-story__rating-note").allTextContents()).map(normalize), ["Demo rating", "Demo rating", "Demo rating"]);
+  assert.equal(await root.locator(".reader-story__rating, .reader-story__score, .reader-story__rating-note").count(), 0, "Unverified review scores must be removed");
+  assert(!/5\s*\/\s*5|Demo rating/.test(await root.innerText()));
   assert.equal(await root.locator(".reader-story__stamp, .reader-story__masthead, .reader-story__signature").count(), 0);
   await viewport.scrollIntoViewIfNeeded();
   await page.mouse.move(0, 0);
@@ -447,11 +455,28 @@ async function carousel(page) {
   await reviewState(page, index);
   await page.evaluate(() => getSelection().removeAllRanges());
   await page.mouse.move(0, 0);
+  await page.waitForFunction(() => document.querySelector("[data-reader-stories]").dataset.carouselState === "playing");
+  const resumed = (index + 1) % 3;
+  await page.waitForFunction(expected => document.querySelector("[data-reader-stories]").dataset.selectedIndex === String(expected), resumed, { timeout: 11000 });
+  await reviewState(page, resumed);
+  index = resumed;
+  await reviewCenter(page);
+  await page.mouse.move(0, 0);
   assert.equal(await root.getAttribute("data-carousel-state"), "paused");
   await page.waitForTimeout(8300);
   await reviewState(page, index);
+  await reviewSide(page, 1);
+  index = (index + 1) % 3;
+  await reviewState(page, index);
+  await page.mouse.move(0, 0);
+  assert.equal(await root.getAttribute("data-carousel-state"), "paused", "Browsing must respect an intentional pause");
+  await reviewCenter(page);
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => document.querySelector("[data-reader-stories]").dataset.carouselState === "playing");
   await viewport.press("ArrowLeft");
   index = (index + 2) % 3;
+  await reviewState(page, index);
+  await page.waitForTimeout(8300);
   await reviewState(page, index);
   await page.keyboard.press("Tab");
   assert(await root.locator("[data-carousel-prev]").evaluate(node => document.activeElement === node));
@@ -464,10 +489,12 @@ async function carousel(page) {
   await page.keyboard.press("Enter");
   assert.notEqual(await pause.textContent(), label);
   await page.keyboard.press("Enter");
-  assert.equal(await root.getAttribute("data-carousel-state"), "paused");
+  assert.equal(await pause.textContent(), label);
   await reviewSide(page, 1);
   index = (index + 1) % 3;
   await reviewState(page, index);
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => document.querySelector("[data-reader-stories]").dataset.carouselState === "playing");
   assert(await root.locator(".reader-stories__key").evaluateAll(buttons => buttons.every(button => {
     const box = button.getBoundingClientRect();
     return box.width <= 1 && box.height <= 1;
@@ -492,7 +519,27 @@ async function carousel(page) {
   await reviewSide(page, 1);
   await reviewState(page, 1);
   assert.equal(await root.locator("[data-story-card]").count(), 3);
-  return { next: true, previous: true, pause: true };
+  return { next: true, previous: true, pause: true, automatic: true, resumeAfterInteraction: true };
+}
+
+async function touchAutoplay(page) {
+  const root = page.locator("[data-reader-stories]");
+  await root.locator("[data-carousel-viewport]").scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => document.querySelector("[data-reader-stories]").dataset.carouselState === "playing");
+  const start = Number(await root.getAttribute("data-selected-index"));
+  await reviewCenter(page, true);
+  assert.equal(await root.getAttribute("data-carousel-state"), "paused");
+  await reviewState(page, start);
+  await reviewSide(page, 1, true);
+  await reviewState(page, (start + 1) % 3);
+  assert.equal(await root.getAttribute("data-carousel-state"), "paused");
+  await reviewCenter(page, true);
+  await page.waitForFunction(() => document.querySelector("[data-reader-stories]").dataset.carouselState === "playing");
+  await page.waitForFunction(expected => document.querySelector("[data-reader-stories]").dataset.selectedIndex === String(expected), (start + 2) % 3, { timeout: 11000 });
+  await reviewState(page, (start + 2) % 3);
+  await reviewSide(page, -1, true);
+  await reviewState(page, (start + 1) % 3);
+  await page.waitForFunction(() => document.querySelector("[data-reader-stories]").dataset.carouselState === "playing");
 }
 
 async function touchCarousel(page, context) {
@@ -511,7 +558,7 @@ async function touchCarousel(page, context) {
     }
     await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   };
-  await swipe(-150, 0);
+  await swipe(-200, 0);
   await reviewState(page, 1);
   await reviewSide(page, -1, true);
   await reviewState(page, 0);
@@ -548,7 +595,7 @@ try {
   for (const pathname of [".git/config", ".cache/hybrid-control/demo-media.json", "client-materials/", "__demo__/not-allowed.webp"]) {
     assert.equal((await fetch(new URL(pathname, target))).status, 404);
   }
-  for (const photo of readerPhotos) {
+  for (const photo of websitePhotos) {
     const response = await fetch(new URL(`assets/images/${photo}`, target));
     assert.equal(response.status, 200);
     assert.equal(sha(Buffer.from(await response.arrayBuffer())), sha(await fs.readFile(path.join(root, "site", "assets", "images", photo))));
@@ -564,6 +611,12 @@ try {
       await settled(page);
       await layout(page);
       const actual = await pageUnits(page, route);
+      if (route === "/about/") {
+        assert(await page.locator(".about-life img").isVisible(), "About should use the existing life photo");
+        assert.equal(await page.locator(".about-life img").getAttribute("alt"), "A baby smiling at the table during a meal.");
+        assert.equal(await page.locator(".about-portrait img").count(), 0, "A child photo must not stand in for the missing author portrait");
+        assert.match(await page.locator(".about-portrait figcaption").innerText(), /Final photograph pending/);
+      }
       observation.pages.push({
         route, viewport, urlPath: new URL(page.url()).pathname, units: actual,
         hiddenUnitIds: [], horizontalOverflow: false, pageErrors: [],
@@ -608,13 +661,23 @@ try {
   await page.goto(target);
   await settled(page);
   assert.equal(await page.locator("[data-hero-book]").count(), 1);
+  assert.equal(await page.locator("#inside [data-hero-book]").count(), 1, "The one interactive book belongs in What's inside");
+  assert.equal(await page.locator(".home-opening [data-hero-book], .hero-static-cover button").count(), 0, "The introductory cover is not a second reader");
+  assert.equal(await page.locator(".hero-static-cover img").count(), 1);
+  assert.match(await page.locator(".hero-positioning").innerText(), /Part storybook\.[\s\S]*Part first-foods guide\./);
+  assert.match(await page.locator(".hero-introduction").innerText(), /fictional story grounded in facts[\s\S]*reading together/);
+  await page.getByRole("link", { name: "Peek inside", exact: true }).click();
+  await page.waitForURL(target + "#inside");
   assert.equal(await page.locator("[data-reader-page]").count(), 4);
   assert.equal(await page.locator("[data-ideas-page]").count(), 1);
   assert.equal(await page.locator("[data-book-toggle]").count(), 0);
   assert(await page.locator("[data-book-close]").isHidden());
   assert.equal((await page.locator("[data-book-open]").textContent()).trim(), "");
-  await page.locator("[data-book-open]").click();
+  const invitation = page.getByRole("button", { name: "Open me: Ready to Eat book preview", exact: true });
+  assert(await invitation.isVisible());
+  await invitation.click();
   await bookState(page, "open", 0);
+  assert(await invitation.isHidden(), "The sticker should disappear while the book is in use");
   assert.equal(await page.locator(".hb-plate").evaluate(node => node.getAnimations().length), 0, "Reduced motion should not animate the plate");
   assert(await page.locator("[data-reader-panel]").evaluate(node => document.activeElement === node));
   await layout(page);
@@ -624,8 +687,11 @@ try {
   await turnOnPage(page, -1);
   await bookState(page, "closed", 0);
   assert(await page.locator("[data-book-open]").evaluate(node => document.activeElement === node));
-  await page.keyboard.press("Enter");
+  assert(await invitation.isVisible());
+  await invitation.focus();
+  await page.keyboard.press("Space");
   await bookState(page, "open", 0);
+  assert(await invitation.isHidden());
   await turnOnPage(page, 1);
   await bookState(page, "open", 2);
   await layout(page);
@@ -679,7 +745,7 @@ try {
   await page.mouse.move(drag.x + 80, drag.y + 175, { steps: 8 });
   await page.mouse.up();
   await bookState(page, "open", 0);
-  await page.locator(".hero-introduction").click();
+  await page.locator(".preview-caption").click();
   await bookState(page, "closed", 0);
   await page.locator("[data-book-open]").click();
   await bookState(page, "open", 0);
@@ -759,6 +825,8 @@ try {
   watch(storiesPage);
   await storiesPage.goto(target);
   await settled(storiesPage);
+  await storiesPage.locator("[data-hero-book]").scrollIntoViewIfNeeded();
+  await storiesPage.waitForFunction(() => document.querySelector("[data-hero-book]").dataset.motion === "running");
   const cue = storiesPage.locator(".hb-cover-cue");
   const firstCue = await cue.evaluate(node => getComputedStyle(node).transform);
   await storiesPage.waitForTimeout(1300);
@@ -793,7 +861,7 @@ try {
   await turnOnPage(storiesPage, -1);
   await storiesPage.waitForFunction(() => !document.querySelector("[data-page-turn]").hidden);
   await storiesPage.waitForTimeout(150);
-  await storiesPage.locator(".hero-introduction").click();
+  await storiesPage.locator(".preview-caption").click();
   await storiesPage.locator(".hb-cover-back > .hb-copy").waitFor({ state: "attached" });
   assert.equal(await storiesPage.locator(".hb-cover-back > .hb-ideas").count(), 1, "Closing during a turn must use the last readable spread");
   await bookState(storiesPage, "closed");
@@ -801,7 +869,7 @@ try {
   await storiesPage.locator("[data-book-open]").focus();
   await storiesPage.keyboard.press("Enter");
   await storiesPage.locator(".hb-cover-back > .hb-sample-left").waitFor({ state: "attached" });
-  await storiesPage.locator(".hero-introduction").click();
+  await storiesPage.locator(".preview-caption").click();
   await bookState(storiesPage, "closed");
   assert.equal(await storiesPage.locator(".hb-copy").count(), 0, "Outside dismissal during opening must clear transitional copies");
   assert.equal(await storiesPage.locator(".hb-plate").evaluate(node => node.getAnimations().length), 0, "Interrupted opening must not leave the plate animation running");
@@ -827,13 +895,25 @@ try {
   await touchCarousel(touchStoriesPage, touchStories);
   await touchStories.close();
 
+  const autoTouch = await testContext({ viewport: { width: 390, height: 844 }, reducedMotion: "no-preference", hasTouch: true });
+  const autoTouchPage = await autoTouch.newPage();
+  watch(autoTouchPage);
+  await autoTouchPage.goto(target);
+  await settled(autoTouchPage);
+  await touchAutoplay(autoTouchPage);
+  report.cases.push({ case: "touch-center-pause-resume-and-automatic-reviews", status: "passed" });
+  await autoTouch.close();
+
   const mobile = await testContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", hasTouch: true });
   const phone = await mobile.newPage();
   watch(phone);
   await phone.goto(target);
   await settled(phone);
-  await phone.locator("[data-book-open]").tap();
+  await phone.getByRole("link", { name: "Peek inside", exact: true }).tap();
+  await phone.waitForURL(target + "#inside");
+  await phone.locator("[data-book-invitation]").tap();
   await bookState(phone, "open", 0);
+  assert(await phone.locator("[data-book-invitation]").isHidden());
   assert.equal(await phone.locator("[data-hero-book]").getAttribute("data-layout"), "single");
   await cornerNotes(phone);
   await turnOnPage(phone, -1, true);
@@ -867,7 +947,7 @@ try {
   await bookState(phone, "closed", 3);
   await phone.locator("[data-book-open]").tap();
   await bookState(phone, "open", 0);
-  await phone.locator(".hero-introduction").tap();
+  await phone.locator(".preview-caption").tap();
   await bookState(phone, "closed", 0);
   await phone.locator("[data-book-open]").tap();
   await bookState(phone, "open", 0);
@@ -900,6 +980,7 @@ try {
     watch(alignmentPage);
     await alignmentPage.goto(target);
     await settled(alignmentPage);
+    await alignmentPage.locator("[data-hero-book]").scrollIntoViewIfNeeded();
     const cover = await alignmentPage.locator("[data-book-open]").boundingBox();
     await alignmentPage.mouse.click(cover.x + cover.width / 2, cover.y + cover.height / 2);
     await bookState(alignmentPage, "open", 0);
@@ -943,6 +1024,7 @@ try {
   assert(await noPage.locator('[data-reader-page="0"]').isVisible());
   assert(await noPage.locator('[data-reader-page="2"]').isVisible());
   assert(await noPage.locator("[data-book-open]").isHidden());
+  assert(await noPage.locator("[data-book-invitation]").isHidden(), "A nonfunctional invitation must not appear without JavaScript");
   assert.equal(await noPage.locator("[data-carousel-ready]").count(), 0);
   assert.equal(await noPage.locator("[data-story-card]:visible").count(), 3);
   await cornerNotes(noPage);

@@ -5,7 +5,7 @@
   const visiblePages = (page, layout) => layout === "spread" ? [pair(page), pair(page) + 1] : [page];
   const sameView = (a, b, layout) => layout === "spread" ? pair(a) === pair(b) : a === b;
   const abortError = () => new DOMException("Book operation superseded", "AbortError");
-  const titles = ["Left book sample", "Right book sample", "Ways to share the book", "Reader moments"];
+  const titles = ["Left book sample", "Right book sample", "Ways to share the book", "Little firsts"];
 
   class HeroBook {
     constructor(root) {
@@ -13,6 +13,7 @@
       this.pages = [...root.querySelectorAll("[data-reader-page]")];
       this.panel = root.querySelector("[data-reader-panel]");
       this.openButton = root.querySelector("[data-book-open]");
+      this.invitation = root.querySelector("[data-book-invitation]");
       this.closeButton = root.querySelector("[data-book-close]");
       this.keyboardControls = root.querySelector(".hb-access");
       this.prev = root.querySelector("[data-book-prev]");
@@ -69,6 +70,10 @@
         this.paint();
         const options = { signal: this.life.signal };
         this.openButton.addEventListener("click", () => this.intent(true, 0), options);
+        this.invitation?.addEventListener("click", () => {
+          this.openButton.focus({ preventScroll: true });
+          this.openButton.click();
+        }, options);
         this.closeButton.addEventListener("click", () => this.close(), options);
         this.prev.addEventListener("click", () => this.step(-1), options);
         this.next.addEventListener("click", () => this.step(1), options);
@@ -166,7 +171,8 @@
       document.addEventListener("click", event => {
         const gesture = this.pageGesture;
         this.pageGesture = null;
-        if (!this.desiredOpen || event.button !== 0 || event.detail > 0 && gesture?.cancelled) return;
+        if (!this.desiredOpen || this.invitation?.contains(event.target) ||
+            event.button !== 0 || event.detail > 0 && gesture?.cancelled) return;
         if (!this.object.contains(event.target)) {
           if (!this.keyboardControls.contains(event.target) && !this.retry.contains(event.target)) {
             if (this.root.contains(event.target)) this.panel.focus({ preventScroll: true });
@@ -274,6 +280,11 @@
       }
       this.openButton.disabled = coverHidden;
       this.openButton.setAttribute("aria-expanded", String(this.committedOpen || this.active?.kind === "hinge" && this.desiredOpen));
+      if (this.invitation) {
+        this.invitation.hidden = !closed;
+        this.invitation.disabled = !closed;
+        this.invitation.setAttribute("aria-expanded", this.openButton.getAttribute("aria-expanded"));
+      }
       this.cover.inert = coverHidden;
       this.cover.setAttribute("aria-hidden", String(coverHidden));
       this.keyboardControls.hidden = closed;
@@ -332,7 +343,7 @@
       this.object.style.transform = this.committedOpen ? "rotateX(0deg) rotateY(0deg)" : "rotateX(4deg) rotateY(-7deg)";
       this.geometry(this.committedOpen ? height : undefined);
       this.status.textContent = this.committedOpen
-        ? this.layout === "spread" ? pair(this.displayed) === 0 ? "Book samples · Preview pages 1–2 of 4" : "Website ideas & reader moments · Preview pages 3–4 of 4"
+        ? this.layout === "spread" ? pair(this.displayed) === 0 ? "Book samples · Preview pages 1–2 of 4" : "Website ideas & little firsts · Preview pages 3–4 of 4"
           : `${titles[this.displayed]} · Preview page ${this.displayed + 1} of 4`
         : "Open a little world of first foods.";
       this.controls(focused);
@@ -641,6 +652,11 @@
       this.cover.inert = false;
       this.openButton.disabled = false;
       this.keyboardControls.hidden = true;
+      if (this.invitation) {
+        this.invitation.hidden = true;
+        this.invitation.disabled = true;
+        this.invitation.setAttribute("aria-expanded", "false");
+      }
       this.panel.tabIndex = -1;
       this.panel.removeAttribute("aria-busy");
       this.status.textContent = "Four website preview pages: two book samples, ideas and reader moments.";

@@ -13,23 +13,32 @@
 .hybrid .button:hover { background: #126a6a; border-color: #126a6a; }
 .hybrid .button:active { box-shadow: inset 0 2px 3px #0003; }
 .hybrid :focus-visible { outline: 3px solid #ad4f12; outline-offset: 5px; }
-.home-opening { padding-top: 28px; text-align: center; }
-.hero-heading { max-width: 760px; margin: 0 auto 22px; text-align: center; }
-.hero-heading h1 { margin: 10px 0 9px; font-size: clamp(3.5rem, 6.6vw, 6.5rem); line-height: .98; text-transform: uppercase; }
+.home-opening { padding-top: clamp(36px, 5vw, 76px); }
+.hero-intro-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: center; gap: clamp(32px, 7vw, 104px); max-width: 1220px; margin-inline: auto; }
+.hero-heading { min-width: 0; width: 100%; max-width: 600px; overflow-wrap: anywhere; }
+.hero-heading h1 { margin: 12px 0 8px; font-size: clamp(3.5rem, 6vw, 6rem); line-height: .98; text-transform: uppercase; }
 .hero-heading h1 span { color: #08767c; }
-.hero-heading .book-subtitle { font-size: 1.14rem; line-height: 1.5; }
-.hero-introduction { margin: 24px auto 0; max-width: 51ch; font-size: 1.06rem; color: var(--muted); }
-.hero-credit { margin: 15px auto 0; max-width: 60ch; color: var(--muted); font-size: .75rem; }
-.home-facts { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px; margin-top: 30px; padding-block: 15px 25px; font-size: .83rem; }
+.hero-heading .book-subtitle { font-size: 1.0625rem; line-height: 1.5; color: var(--muted); }
+.hero-positioning { margin-top: 30px; font-family: var(--display); font-size: clamp(2rem, 3.2vw, 3rem); line-height: 1.08; }
+.hero-positioning span { color: var(--teal); }
+.hero-introduction { margin-top: 18px; max-width: 43ch; font-size: 1.0625rem; line-height: 1.75; color: var(--muted); }
+.hero-peek { display: inline-flex; align-items: center; gap: 14px; min-height: 48px; margin-top: 22px; padding-block: 8px; font-size: 1rem; font-weight: 700; text-decoration-thickness: 2px; }
+.hero-peek svg { width: 23px; height: 23px; fill: none; stroke: var(--teal); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.hero-credit { margin-top: 20px; color: var(--muted); font-size: .8125rem; line-height: 1.65; }
+.hero-static-cover { min-width: 0; width: min(100%, 430px); justify-self: center; padding: 16px 14px 0; }
+.hero-static-cover img { width: 100%; height: auto; transform: rotate(3deg); border-radius: 2px 6px 6px 2px; box-shadow: 3px 4px 0 #cabbaa, 6px 8px 0 #fffbed, 8px 10px 0 #c4b5a0, 11px 20px 30px #44365126; }
+.hero-static-cover figcaption { margin-top: 32px; text-align: center; font-family: var(--display); color: var(--teal); font-size: 1.5rem; line-height: 1.12; }
+.home-facts { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px; margin-top: 42px; padding-block: 20px 32px; font-size: .875rem; }
 .home-facts p { display: flex; align-items: baseline; gap: 10px; }
 .home-facts strong { font-family: var(--display); font-size: 1.75rem; font-weight: 400; color: #08767c; }
 .hybrid .chapter-wave { fill: var(--teal); color: var(--teal); }
-.guide-context { padding-block: 50px 56px; background: var(--teal); color: var(--paper); }
-.guide-layout { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 34px 70px; }
-.guide-layout h2 { max-width: 16ch; font-size: clamp(2.8rem, 4.5vw, 4.3rem); margin-top: 14px; }
-.guide-layout .guide-body { max-width: 45ch; margin-top: 26px; line-height: 1.8; }
-.guide-notes { display: flex; flex-wrap: wrap; gap: 12px 22px; margin-top: 24px; font-size: .875rem; }
-.guide-notes span { padding-bottom: 6px; border-bottom: 1px solid #fffbed70; }
+.guide-context { padding-block: 34px 42px; background: var(--teal); color: var(--paper); }
+.guide-layout { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 30px 70px; }
+.guide-layout h2 { max-width: 18ch; font-size: clamp(2.5rem, 4vw, 3.6rem); line-height: 1.05; margin-top: 12px; }
+.guide-layout .guide-body { max-width: 47ch; font-size: 1.0625rem; line-height: 1.75; }
+.guide-together { margin-top: 18px; max-width: 47ch; font-size: .9375rem; }
+.inside-preview { padding-block: 42px 32px; }
+.preview-caption { margin: 22px auto 0; max-width: 54ch; text-align: center; color: var(--muted); font-size: .875rem; line-height: 1.65; }
 .bulk-section { display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 30px 65px; margin-block: 18px 55px; padding: 34px 40px; background: var(--paper); border: 1px solid #d7cdb6; border-radius: 25px 38px 24px 31px; box-shadow: 0 3px 0 #ab9ab915; }
 .bulk-section h2 { font-size: clamp(2.4rem, 3.6vw, 3.5rem); margin-top: 12px; }
 .bulk-section p { max-width: 50ch; color: var(--muted); }
@@ -53,19 +62,26 @@
   .hybrid .site-header { min-height: 84px; gap: 13px; }
   .hybrid .brand img { width: 103px; }
   .site-nav { gap: 12px; font-size: .8125rem; }
-  .home-opening { padding-top: 26px; }
+  .home-opening { padding-top: 32px; }
+  .hero-intro-layout { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .hero-heading { margin-inline: auto; text-align: center; }
   .hero-heading h1 { font-size: clamp(3rem, 12.9vw, 4.8rem); }
-  .hero-heading .eyebrow { font-size: .66rem; }
+  .hero-heading .eyebrow { font-size: .75rem; }
   .hero-heading .book-subtitle { font-size: 1rem; }
-  .hero-introduction { font-size: 1rem; }
-  .hero-credit { max-width: 31ch; }
-  .home-facts { justify-content: center; margin-top: 20px; font-size: .73rem; }
-  .home-facts strong { font-size: 1.42rem; }
-  .guide-context { padding-block: 34px 38px; }
-  .guide-layout { grid-template-columns: 1fr; gap: 0; }
-  .guide-layout h2 { max-width: none; font-size: 2.8rem; }
-  .guide-layout .guide-body { margin-top: 21px; }
-  .guide-notes { gap: 9px 14px; }
+  .hero-positioning { margin-top: 24px; font-size: clamp(1.875rem, 8.5vw, 2.25rem); }
+  .hero-introduction { margin-inline: auto; font-size: 1rem; }
+  .hero-peek { margin-top: 16px; }
+  .hero-credit { margin-top: 14px; }
+  .hero-static-cover { width: min(84%, 350px); }
+  .hero-static-cover figcaption { margin-top: 22px; font-size: 1.375rem; }
+  .home-facts { justify-content: center; gap: 12px 24px; margin-top: 26px; padding-bottom: 24px; font-size: .875rem; }
+  .home-facts strong { font-size: 1.5rem; }
+  .guide-context { padding-block: 26px 32px; }
+  .guide-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .guide-layout h2 { max-width: none; font-size: 2.5rem; }
+  .guide-layout .guide-body { font-size: 1rem; }
+  .inside-preview { padding-block: 28px 16px; }
+  .preview-caption { font-size: .8125rem; margin-top: 18px; }
   .bulk-section { grid-template-columns: 1fr; padding: 27px 24px; gap: 22px; margin-bottom: 38px; }
   .bulk-section h2 { font-size: 2.6rem; }
   .hybrid .site-footer { flex-direction: column; align-items: start; gap: 12px; }

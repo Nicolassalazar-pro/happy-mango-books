@@ -2,26 +2,27 @@
   "units": [
     {
       "id": "book-intro",
-      "source_id": "site-draft-copy",
-      "source_sha256": "40922b8c6c1d56f873211303812f932c686d8ed400c6fa776c33cddfcd14274f",
+      "source_id": "customer-story-revision",
+      "source_sha256": "8bc958caca4a07053e87eb99e56b173fe8f5c08841ed7a23bc73baf0554fa2d2",
       "route": "/",
       "heading": "Ready to Eat!",
       "paragraphs": [
-        "The Guide to Baby's First Foods"
+        "The Guide to Baby's First Foods",
+        "A playful fictional story grounded in facts, made for reading together \u2014 with practical guidance for grown-ups."
       ],
       "qualification": "Little readers. Big firsts.",
       "role": "opening"
     },
     {
       "id": "guide-context",
-      "source_id": "site-child-first-copy",
-      "source_sha256": "f8d4eac8f1a4c765a3364c16c335f3d7985f0ba8a200e55f6ce19a60613f8391",
+      "source_id": "customer-story-revision",
+      "source_sha256": "8bc958caca4a07053e87eb99e56b173fe8f5c08841ed7a23bc73baf0554fa2d2",
       "route": "/",
       "heading": "A story for them. A guide for you.",
       "paragraphs": [
-        "Bright illustrations and playful sounds give your little one a story to explore. More than 30 expert tips give you guidance alongside their first-food discoveries."
+        "Follow a playful first-foods story with your little one. Alongside it, more than 30 expert tips offer practical guidance for you."
       ],
-      "qualification": "Inside Ready to Eat",
+      "qualification": "What's inside",
       "role": "detail"
     },
     {
@@ -52,7 +53,8 @@
   "specification": {
     "sources": {
       "site-draft-copy": "40922b8c6c1d56f873211303812f932c686d8ed400c6fa776c33cddfcd14274f",
-      "site-child-first-copy": "f8d4eac8f1a4c765a3364c16c335f3d7985f0ba8a200e55f6ce19a60613f8391"
+      "site-child-first-copy": "f8d4eac8f1a4c765a3364c16c335f3d7985f0ba8a200e55f6ce19a60613f8391",
+      "customer-story-revision": "8bc958caca4a07053e87eb99e56b173fe8f5c08841ed7a23bc73baf0554fa2d2"
     },
     "direction": {
       "subject": "option 3's Paper Theatre structure with option 1's Hinged Storybook treatment",
@@ -204,7 +206,9 @@
         "expected": {
           "next": true,
           "previous": true,
-          "pause": true
+          "pause": true,
+          "automatic": true,
+          "resumeAfterInteraction": true
         },
         "route": "/"
       },

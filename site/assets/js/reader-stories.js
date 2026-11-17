@@ -6,8 +6,11 @@
 
   const instances = new Map();
   const interval = 8000;
+  let instructionId = 0;
+  let keyboardInput = false;
 
   function create(root) {
+    const scene = root.querySelector(".reader-stories__window");
     const viewport = root.querySelector("[data-carousel-viewport]");
     const track = root.querySelector("[data-carousel-track]");
     const cards = Array.from(root.querySelectorAll("[data-story-card]"));
@@ -16,22 +19,35 @@
     const next = root.querySelector("[data-carousel-next]");
     const pause = root.querySelector("[data-carousel-pause]");
     const announcement = root.querySelector("[data-carousel-announcement]");
-    if (!viewport || !track || cards.length < 2 || !controls || !previous || !next || !pause || !announcement ||
+    if (!scene || !viewport || !track || cards.length < 2 || !controls || !previous || !next || !pause || !announcement ||
         typeof window.EmblaCarousel !== "function" || !window.ResizeObserver || !window.IntersectionObserver) return null;
 
     const events = new AbortController();
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const originalAttributes = [
+      [root, ["aria-roledescription"]],
+      [viewport, ["tabindex", "aria-keyshortcuts", "aria-describedby"]],
+      [track, ["role", "style"]],
+      ...cards.map(card => [card, ["role", "aria-hidden", "aria-current", "aria-roledescription", "aria-label", "inert", "style"]]),
+    ].flatMap(([node, names]) => names.map(name => [node, name, node.getAttribute(name)]));
+    const originalPause = { text: pause.textContent, label: pause.getAttribute("aria-label"), disabled: pause.disabled };
+    const controlsHidden = controls.hidden;
     let index = 0;
     let timer = null;
-    let paused = root.contains(document.activeElement);
+    let hintTimer = null;
+    let userPaused = false;
     let hovered = false;
+    let keyboardFocused = keyboardInput && root.contains(document.activeElement);
+    let pointerHeld = false;
+    let dragging = false;
+    let selecting = false;
     let visible = false;
     let destroyed = false;
-    let pointerPauseIntent = null;
+    let hinted = false;
     let manualSelection = false;
     let tapGesture = null;
     let deck = null;
-    const listen = (target, name, handler) => target.addEventListener(name, handler, { signal: events.signal });
+    const listen = (target, name, handler, options = {}) => target.addEventListener(name, handler, { ...options, signal: events.signal });
     root.dataset.carouselReady = "true";
     const carousel = window.EmblaCarousel(viewport, {
       loop: true,
@@ -39,6 +55,17 @@
       duration: reduced.matches ? 0 : 25,
       watchDrag: (_api, event) => !(event.type === "mousedown" && event.target.closest?.("blockquote, .reader-story__author")),
     });
+    const instructions = document.createElement("p");
+    instructions.className = "sr-only";
+    instructions.dataset.carouselInstructions = "";
+    instructions.id = `reader-stories-instructions-${++instructionId}`;
+    const hint = document.createElement("p");
+    hint.className = "reader-stories__hint";
+    hint.dataset.carouselHint = "";
+    hint.setAttribute("aria-hidden", "true");
+    hint.hidden = true;
+    scene.append(instructions, hint);
+    viewport.setAttribute("aria-describedby", [viewport.getAttribute("aria-describedby"), instructions.id].filter(Boolean).join(" "));
 
     function renderDeck() {
       if (destroyed || !deck) return;
@@ -71,7 +98,7 @@
         point.translate.toggleActive(false);
       });
       const width = cards[0].offsetWidth;
-      const sceneWidth = root.querySelector(".reader-stories__window").clientWidth;
+      const sceneWidth = scene.clientWidth;
       const sideHalf = .92 * width / 2;
       const spread = Math.max(20, Math.min(width * .55, (sceneWidth / 2 - sideHalf - 9) / Math.sin(Math.PI * 2 / 3)));
       deck = {
@@ -95,7 +122,33 @@
       if (manual) {
         const name = cards[index].querySelector(".reader-story__author strong")?.textContent || "";
         announcement.textContent = `Story ${index + 1} of ${cards.length}${name ? `, ${name}` : ""}.`;
-      } else announcement.textContent = "";
+      }
+    }
+
+    function currentState() {
+      return reduced.matches ? "reduced-motion" : document.hidden ? "hidden" :
+        userPaused ? "paused" : !visible ? "offscreen" : pointerHeld || dragging ? "dragging" :
+        keyboardFocused ? "focus-paused" : selecting ? "selection-paused" : hovered ? "hover-paused" : "playing";
+    }
+
+    function hideHint() {
+      window.clearTimeout(hintTimer);
+      hintTimer = null;
+      hint.hidden = true;
+    }
+
+    function showHint(text) {
+      hideHint();
+      if (destroyed || !visible || document.hidden || keyboardFocused) return;
+      hint.textContent = text;
+      hint.hidden = false;
+      hintTimer = window.setTimeout(hideHint, 5000);
+    }
+
+    function hasSelection() {
+      const selection = window.getSelection();
+      return Boolean(selection && !selection.isCollapsed && selection.rangeCount &&
+        selection.getRangeAt(0).intersectsNode(viewport));
     }
 
     function schedule() {
@@ -107,17 +160,23 @@
         instances.delete(root);
         return;
       }
-      const state = reduced.matches ? "reduced-motion" : document.hidden ? "hidden" :
-        paused ? "paused" : !visible ? "offscreen" : hovered ? "hover-paused" : "playing";
+      const state = currentState();
       root.dataset.carouselState = state;
+      root.dataset.carouselUserPaused = String(userPaused);
+      root.dataset.carouselKeyboardFocus = String(keyboardFocused);
       pause.disabled = reduced.matches;
-      pause.textContent = reduced.matches ? "Auto-play off" : paused ? "Resume" : "Pause";
+      pause.textContent = reduced.matches ? "Auto-play off" : userPaused ? "Resume" : "Pause";
       pause.setAttribute("aria-label", reduced.matches ? "Auto-play off for reduced motion" :
-        `${paused ? "Resume" : "Pause"} automatic reader stories`);
+        `${userPaused ? "Resume" : "Pause"} automatic reader stories`);
+      instructions.textContent = (reduced.matches ? "Automatic rotation is off for reduced motion. " :
+        userPaused ? "Automatic rotation is paused. Tap the bottom center of the front card or use Resume to enable it. " :
+        "Reviews rotate every eight seconds. Tap the bottom center of the front card or use Pause to stop rotation. Hover, text selection and keyboard focus pause it temporarily. ") +
+        "Tap either edge, swipe horizontally, or use the Left and Right Arrow keys to browse. Review controls appear when reached with Tab.";
+      if (!visible || document.hidden || keyboardFocused) hideHint();
       if (state === "playing") {
         timer = window.setTimeout(() => {
           timer = null;
-          if (!destroyed && !paused && !hovered && visible && !reduced.matches && !document.hidden && root.isConnected) {
+          if (!destroyed && currentState() === "playing" && root.isConnected) {
             manualSelection = false;
             carousel.scrollNext();
           }
@@ -127,7 +186,6 @@
     }
 
     function manualStep(direction, from = carousel.selectedScrollSnap()) {
-      paused = true;
       if (from !== carousel.selectedScrollSnap()) carousel.scrollTo(from, reduced.matches);
       manualSelection = true;
       if (direction > 0) {
@@ -138,10 +196,26 @@
       schedule();
     }
 
-    const observer = "IntersectionObserver" in window ? new IntersectionObserver(entries => {
-      visible = entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= .5);
+    function togglePause() {
+      if (reduced.matches) return;
+      userPaused = !userPaused;
+      announcement.textContent = userPaused ? "Automatic reader stories paused." :
+        "Automatic reader stories enabled. Rotation resumes after you leave the reviews and finish selecting text.";
       schedule();
-    }, { threshold: [0, .5] }) : null;
+      showHint(userPaused ? "Paused — tap bottom center to resume." : "Auto-play on — tap bottom center to pause.");
+    }
+
+    const observer = new IntersectionObserver(entries => {
+      const nextVisible = entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= .5);
+      if (visible !== nextVisible) {
+        visible = nextVisible;
+        schedule();
+      }
+      if (visible && !hinted) {
+        hinted = true;
+        showHint(reduced.matches ? "Tap the edges or swipe to browse." : "Tap bottom center to pause · edges to browse.");
+      }
+    }, { threshold: [0, .5] });
     const sceneObserver = new ResizeObserver(measureDeck);
 
     function destroy() {
@@ -149,36 +223,36 @@
       destroyed = true;
       window.clearTimeout(timer);
       timer = null;
+      hideHint();
       events.abort();
-      observer?.disconnect();
+      observer.disconnect();
       sceneObserver.disconnect();
       carousel.destroy();
-      cards.forEach(card => {
-        card.style.removeProperty("transform");
-        card.style.removeProperty("z-index");
+      instructions.remove();
+      hint.remove();
+      originalAttributes.forEach(([node, name, value]) => {
+        if (value === null) node.removeAttribute(name);
+        else node.setAttribute(name, value);
       });
-      controls.hidden = true;
+      controls.hidden = controlsHidden;
+      pause.textContent = originalPause.text;
+      pause.disabled = originalPause.disabled;
+      if (originalPause.label === null) pause.removeAttribute("aria-label");
+      else pause.setAttribute("aria-label", originalPause.label);
       announcement.textContent = "";
-      viewport.tabIndex = -1;
-      viewport.removeAttribute("aria-keyshortcuts");
-      track.removeAttribute("role");
-      root.removeAttribute("aria-roledescription");
       delete root.dataset.carouselReady;
       delete root.dataset.selectedIndex;
       delete root.dataset.carouselState;
+      delete root.dataset.carouselUserPaused;
+      delete root.dataset.carouselKeyboardFocus;
       delete root.dataset.carouselDragging;
-      cards.forEach(card => {
-        card.inert = false;
-        for (const attribute of ["aria-hidden", "aria-current", "aria-roledescription", "aria-label", "role"]) card.removeAttribute(attribute);
-      });
+      tapGesture = null;
     }
 
     root.setAttribute("aria-roledescription", "carousel");
     viewport.tabIndex = 0;
     viewport.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight");
-    track.setAttribute("role", "presentation");
     cards.forEach((card, item) => {
-      card.setAttribute("role", "group");
       card.setAttribute("aria-roledescription", "slide");
       card.setAttribute("aria-label", `${item + 1} of ${cards.length}`);
     });
@@ -197,20 +271,35 @@
     });
     carousel.on("reInit", () => {
       if (tapGesture) tapGesture.cancelled = true;
+      pointerHeld = false;
+      dragging = false;
       delete root.dataset.carouselDragging;
       measureDeck();
       show(carousel.selectedScrollSnap());
       schedule();
     });
     carousel.on("pointerDown", () => {
-      paused = true;
+      dragging = true;
       manualSelection = true;
       root.dataset.carouselDragging = "true";
       schedule();
     });
     carousel.on("pointerUp", () => {
+      dragging = false;
       delete root.dataset.carouselDragging;
-      if (reduced.matches) carousel.scrollTo(carousel.selectedScrollSnap(), true);
+      if (reduced.matches) {
+        carousel.scrollTo(carousel.selectedScrollSnap(), true);
+        // A release can already target this snap; Embla skips rendering a zero-distance jump.
+        const animation = carousel.internalEngine().animation;
+        animation.update();
+        animation.render(1);
+        animation.stop();
+      }
+      schedule();
+    });
+    listen(viewport, "mousedown", event => {
+      // Quote starts remain native selections; only an engine-owned mouse drag suppresses selection.
+      if (event.button === 0 && dragging && event.cancelable) event.preventDefault();
     });
     listen(viewport, "pointerdown", event => {
       if (!event.isPrimary || event.button !== 0) {
@@ -218,24 +307,79 @@
         return;
       }
       // A press can settle an in-flight slide before click; retain the intended index.
-      tapGesture = { id: event.pointerId, x: event.clientX, y: event.clientY, index: carousel.selectedScrollSnap(), cancelled: false };
+      tapGesture = {
+        id: event.pointerId, pointerType: event.pointerType, x: event.clientX, y: event.clientY,
+        index: carousel.selectedScrollSnap(), started: performance.now(), ended: false,
+        cancelled: hasSelection() || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey,
+      };
+      pointerHeld = true;
+      schedule();
     });
-    listen(viewport, "pointermove", event => {
+    listen(window, "pointermove", event => {
       if (tapGesture?.id === event.pointerId && Math.hypot(event.clientX - tapGesture.x, event.clientY - tapGesture.y) > 10) tapGesture.cancelled = true;
-    });
-    listen(viewport, "pointercancel", () => {
+    }, { passive: true });
+    listen(window, "pointerup", event => {
+      if (tapGesture?.id !== event.pointerId) return;
+      tapGesture.ended = true;
+      if (Math.hypot(event.clientX - tapGesture.x, event.clientY - tapGesture.y) > 10) tapGesture.cancelled = true;
+      pointerHeld = false;
+      schedule();
+    }, { passive: true });
+    listen(window, "pointercancel", event => {
+      if (tapGesture?.id !== event.pointerId) return;
+      tapGesture.cancelled = true;
+      pointerHeld = false;
+      schedule();
+    }, { passive: true });
+    listen(document, "scroll", () => {
+      if (tapGesture) tapGesture.cancelled = true;
+    }, { capture: true, passive: true });
+    listen(viewport, "contextmenu", () => {
       if (tapGesture) tapGesture.cancelled = true;
     });
     listen(viewport, "click", event => {
       const gesture = tapGesture;
       tapGesture = null;
-      if (event.defaultPrevented || gesture?.cancelled || event.button !== 0 ||
+      if (!gesture || !gesture.ended || gesture.cancelled || performance.now() - gesture.started > 500 ||
+          event.defaultPrevented || event.button !== 0 || (gesture.pointerType !== "touch" && event.detail > 1) ||
           event.target.closest("a, button, input, textarea, select, [contenteditable='true']") ||
-          !window.getSelection()?.isCollapsed) return;
+          (gesture.pointerType === "mouse" && event.target.closest("blockquote, .reader-story__author")) ||
+          hasSelection()) return;
+      const card = event.target.closest("[data-story-card]");
+      if (!card || !cards.includes(card)) return;
       const bounds = viewport.getBoundingClientRect();
+      const position = (event.clientX - bounds.left) / bounds.width;
+      const startPosition = (gesture.x - bounds.left) / bounds.width;
+      const zone = position < .3 ? -1 : position > .7 ? 1 : 0;
+      const startZone = startPosition < .3 ? -1 : startPosition > .7 ? 1 : 0;
+      // The middle 40% is pause-only; both outer zones are navigation-only.
+      if (zone !== startZone || (zone === 0 && card !== cards[gesture.index])) return;
       viewport.focus({ preventScroll: true });
-      const from = gesture?.index ?? carousel.selectedScrollSnap();
-      manualStep(event.clientX < bounds.left + bounds.width / 2 ? -1 : 1, from);
+      if (zone) manualStep(zone, gesture.index);
+      else togglePause();
+    });
+    listen(document, "keydown", event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || ["Alt", "Control", "Meta", "Shift"].includes(event.key)) return;
+      keyboardInput = true;
+      if (root.contains(document.activeElement) && !keyboardFocused) {
+        keyboardFocused = true;
+        schedule();
+      }
+    }, { capture: true });
+    listen(document, "pointerdown", () => {
+      keyboardInput = false;
+      if (keyboardFocused) {
+        keyboardFocused = false;
+        schedule();
+      }
+    }, { capture: true, passive: true });
+    listen(document, "selectionchange", () => {
+      const nextSelecting = hasSelection();
+      if (nextSelecting && tapGesture) tapGesture.cancelled = true;
+      if (selecting !== nextSelecting) {
+        selecting = nextSelecting;
+        schedule();
+      }
     });
     listen(root, "keydown", event => {
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
@@ -248,7 +392,12 @@
     listen(previous, "click", () => manualStep(-1));
     listen(next, "click", () => manualStep(1));
     listen(root, "focusin", () => {
-      paused = true;
+      keyboardFocused = keyboardInput;
+      schedule();
+    });
+    listen(root, "focusout", event => {
+      if (root.contains(event.relatedTarget)) return;
+      keyboardFocused = false;
       schedule();
     });
     listen(root, "pointerenter", event => {
@@ -260,31 +409,20 @@
       hovered = false;
       schedule();
     });
-    listen(root, "pointerdown", event => {
-      if (event.target.closest("[data-carousel-pause]")) return;
-      paused = true;
+    listen(pause, "click", togglePause);
+    listen(document, "visibilitychange", () => {
+      if (document.hidden && (pointerHeld || dragging)) carousel.reInit();
+      if (document.hidden && tapGesture) tapGesture.cancelled = true;
       schedule();
     });
-    // Preserve the release action when pointer focus pauses before the click.
-    listen(pause, "pointerdown", () => { pointerPauseIntent = !paused; });
-    listen(pause, "pointercancel", () => { pointerPauseIntent = null; });
-    listen(pause, "click", event => {
-      paused = event.detail > 0 && pointerPauseIntent !== null ? pointerPauseIntent : !paused;
-      pointerPauseIntent = null;
-      if (!paused) {
-        hovered = false;
-        manualSelection = false;
-      }
-      schedule();
-    });
-    listen(document, "visibilitychange", schedule);
     listen(reduced, "change", () => {
       carousel.reInit({ duration: reduced.matches ? 0 : 25 });
       carousel.scrollTo(index, true);
       schedule();
     });
-    observer?.observe(viewport);
-    sceneObserver.observe(root.querySelector(".reader-stories__window"));
+    selecting = hasSelection();
+    observer.observe(viewport);
+    sceneObserver.observe(scene);
     schedule();
     return { destroy };
   }

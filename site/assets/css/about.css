@@ -3,25 +3,26 @@
   grid-template-columns: minmax(0, 1.06fr) minmax(0, 1fr);
   align-items: center;
   gap: clamp(32px, 5vw, 72px);
-  padding-block: 48px 68px;
+  padding-block: clamp(32px, 4vw, 56px) 56px;
 }
 .about-copy, .about-collage { min-width: 0; }
 .about-intro .draft-label { font-size: .8125rem; }
 .about-intro .about-eyebrow { margin-top: 24px; }
 .about-intro h1 {
-  margin-block: 12px 24px;
-  font-size: clamp(3.5rem, 6.5vw, 6rem);
+  margin-block: 12px 20px;
+  font-size: clamp(3.5rem, 5.4vw, 5.25rem);
   line-height: 1;
 }
 .about-role { max-width: 36ch; font-size: 1.125rem; line-height: 1.6; }
-.about-introduction { max-width: 47ch; margin-top: 22px; color: var(--muted); }
+.about-introduction { max-width: 47ch; margin-top: 22px; color: var(--muted); font-size: 1.0625rem; line-height: 1.75; }
+.about-together { max-width: 43ch; margin-top: 16px; color: var(--teal); font-size: 1.0625rem; line-height: 1.65; }
 .about-introduction cite { font-style: normal; }
 .about-story {
   margin-top: 30px;
   padding: 3px 0 3px 22px;
   border-left: 3px solid var(--teal);
 }
-.about-slot-label { font-size: .75rem; font-weight: 700; color: var(--muted); }
+.about-slot-label { font-size: .8125rem; font-weight: 700; color: var(--muted); }
 .about-story h2 { margin-block: 7px 12px; font-size: 2.375rem; line-height: 1.1; }
 .about-story > p:last-child { max-width: 46ch; color: var(--muted); font-size: .9375rem; }
 .about-links { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-top: 30px; }
@@ -34,6 +35,8 @@
   align-items: start;
   gap: 22px 20px;
   padding: 18px 8px;
+  width: min(100%, 590px);
+  justify-self: center;
 }
 .about-collage::before {
   content: "";
@@ -51,16 +54,17 @@
 }
 .about-paper figcaption { padding: 12px 3px 3px; }
 .about-paper figcaption strong { display: block; font-family: var(--display); font-size: 1.625rem; font-weight: 400; line-height: 1.1; }
-.about-paper figcaption span { display: block; margin-top: 6px; color: var(--muted); font-size: .75rem; line-height: 1.6; }
+.about-paper figcaption span { display: block; margin-top: 6px; color: var(--muted); font-size: .8125rem; line-height: 1.6; }
 .about-paper svg { display: block; width: 100%; height: auto; }
 .about-portrait { grid-column: 1 / -1; margin-inline: 28px; transform: rotate(-2deg); }
 .about-portrait-art { overflow: hidden; background: var(--canvas); }
 .about-portrait figcaption { padding: 14px 8px 8px; }
 .about-portrait figcaption strong { font-size: 1.875rem; }
-.about-making { transform: rotate(-3deg); }
+.about-making { align-self: center; transform: rotate(-3deg); }
 .about-note-art { background: var(--paper); }
 .about-life { margin-top: 13px; transform: rotate(3deg); }
 .about-life-art { background: var(--canvas); }
+.about-life-art img { display: block; width: 100%; height: auto; }
 .about-art-paper { fill: var(--paper); }
 .about-art-mint { fill: var(--mint); }
 .about-art-line { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }

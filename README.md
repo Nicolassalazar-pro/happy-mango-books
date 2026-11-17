@@ -4,7 +4,7 @@ A static, book-first website for **Ready to Eat: The Guide to Baby's First Foods
 
 Public demo: https://nicolassalazar-pro.github.io/happy-mango-books/
 
-The demo combines the selected paper-stage layout with one animated hero book, photo-derived page samples, an About-page mockup, reader stories, and a general/bulk inquiry page. The two supplied reader photographs are approved for publication and included as metadata-cleared derivatives.
+The site introduces the storybook and caregiver guide with a static cover, then places one animated book-and-plate preview in **What's inside**. It retains photo-derived page samples, first-food photographs, an About-page mockup, reader stories, and a general/bulk inquiry page. Website photographs are metadata-cleared derivatives; raw originals remain private. Changes are not published until explicitly approved.
 
 ## Structure
 
@@ -24,7 +24,7 @@ There is no build step or server-side runtime. The review carousel uses a pinned
 npm start
 ```
 
-Open http://127.0.0.1:64972/. The normal preview serves the same static images as the public demo and needs no private media manifest. It never serves raw client folders. The Contact form can submit to FormSubmit; other pages retain the preview's no-connection policy.
+Open http://127.0.0.1:64972/. The normal preview serves the current `site` assets and needs no private media manifest. It never serves raw client folders. The Contact form can submit to FormSubmit; other pages retain the preview's no-connection policy.
 
 For browser checks, install the development dependencies and Chromium once:
 
@@ -47,10 +47,12 @@ The receiving inbox must confirm FormSubmit's one-time activation email before d
 
 GitHub Pages uses the pinned GitHub Actions workflow. Updates to `site/` on `main` deploy automatically; only that directory is uploaded. Publication requires explicit user approval.
 
-The pages remain `noindex,nofollow`. Amazon is not configured. Inquiry routing is configured, with receiving-inbox activation required as described above. Publication permission was confirmed for the two reader photos already supplied; future additions need their own confirmation. Raw originals and conversation screenshots remain private. The recovered book-page samples have honest missing-photo corners, not generated replacement artwork.
+The pages remain `noindex,nofollow`. Amazon is not configured. Inquiry routing is configured, with receiving-inbox activation required as described above. The selected photo derivatives are approved for this demo release. Raw originals and conversation screenshots remain private. The recovered book-page samples have honest missing-photo corners, not generated replacement artwork. Author portrait and personal-story placeholders remain labeled until the customer's material arrives.
 
 Book artwork, branding and reader quotations are not offered under an open-source license. Included font licenses are in `site/assets/fonts/`.
 
 Embla Carousel is MIT-licensed. Its unchanged release bundle and license are included in `site\assets\js\vendor`; the matching package version is pinned in the development dependencies for reproducibility.
 
-The review cards use an original layered renderer over that pinned engine's input and loop coordinates, not its default horizontal layout. Cards stay level while moving through the foreground/background. Keep the 8.6.0 bundle and renderer in sync when upgrading. Quotes remain semantic HTML; without the engine, the same cards form a readable static list. The labeled demo scores are visual placeholders, not verified reviewer ratings.
+The review cards use an original layered renderer over that pinned engine's input and loop coordinates, not its default horizontal layout. Cards stay level while moving through the foreground/background. Keep the 8.6.0 bundle and renderer in sync when upgrading. Quotes remain semantic HTML; without the engine, the same cards form a readable static list. Unverified rating badges are not displayed.
+
+Visible reviews rotate automatically after an eight-second reading dwell. Hover, text selection and keyboard focus pause temporarily; leaving those states restarts the full dwell. Tap the bottom center of the front card to pause/resume deliberately, or tap its sides/swipe to browse. Native controls appear on keyboard focus. Reduced motion disables autoplay, and no deliberate pause is silently cleared by navigation.
